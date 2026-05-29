@@ -12,3 +12,6 @@ verify_jwt = false
 
 [functions.fx-rate]
 verify_jwt = false
+
+[functions.evaluate-quota-rules]
+verify_jwt = false
