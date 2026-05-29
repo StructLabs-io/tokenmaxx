@@ -4,20 +4,18 @@
   "main": ".open-next/worker.js",
   "compatibility_date": "2025-05-29",
   "compatibility_flags": ["nodejs_compat"],
+  "routes": [
+    { "pattern": "tokenmaxx.structlabs.io", "custom_domain": true }
+  ],
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
   "observability": {
     "enabled": true
+  },
+  "vars": {
+    "NEXT_PUBLIC_SUPABASE_URL": "https://ewaknihwrzysakbtjzlx.supabase.co",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV3YWtuaWh3cnp5c2FrYnRqemx4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwNTIzMTYsImV4cCI6MjA5NTYyODMxNn0.wOw8RnZsVOoJQqqQ9pf3YQH0lXx8nS0HvJlM3LixKWE"
   }
-
-  // Uncomment and fill in after Supabase is provisioned:
-  // "vars": {
-  //   "NEXT_PUBLIC_SUPABASE_URL": "https://your-project.supabase.co",
-  //   "NEXT_PUBLIC_SUPABASE_ANON_KEY": "your-anon-key"
-  // }
-  //
-  // Never put secrets here -- use:
-  //   wrangler secret put SUPABASE_SERVICE_ROLE_KEY
 }

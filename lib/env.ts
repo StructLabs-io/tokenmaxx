@@ -27,6 +27,17 @@ const envSchema = z.object({
     .optional()
     .default("placeholder-anon-key"),
 
+  /**
+   * Supabase service role key -- SERVER ONLY, bypasses RLS.
+   * Never expose in browser bundles. Used in Route Handlers and RSC only.
+   * In CF Workers deployment: set via `wrangler secret put SUPABASE_SERVICE_ROLE_KEY`.
+   */
+  SUPABASE_SERVICE_ROLE_KEY: z
+    .string()
+    .min(1)
+    .optional()
+    .default("placeholder-service-role-key"),
+
   /** Next.js app base URL */
   NEXTAUTH_URL: z.string().url().optional(),
 
@@ -41,6 +52,7 @@ function parseEnv(): Env {
   const result = envSchema.safeParse({
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
     NEXTAUTH_URL: process.env.NEXTAUTH_URL,
     NODE_ENV: process.env.NODE_ENV,
   });
@@ -57,10 +69,21 @@ function parseEnv(): Env {
 
 export const env = parseEnv();
 
-/** Returns true when both Supabase vars are real (not placeholder) */
+/** Returns true when both public Supabase vars are real (not placeholder) */
 export function isSupabaseConfigured(): boolean {
   return (
     env.NEXT_PUBLIC_SUPABASE_URL !== "https://placeholder.supabase.co" &&
     env.NEXT_PUBLIC_SUPABASE_ANON_KEY !== "placeholder-anon-key"
+  );
+}
+
+/**
+ * Returns true when the service role key is real (not placeholder).
+ * Use this to guard server-side Supabase calls in Route Handlers.
+ */
+export function isServiceRoleConfigured(): boolean {
+  return (
+    env.NEXT_PUBLIC_SUPABASE_URL !== "https://placeholder.supabase.co" &&
+    env.SUPABASE_SERVICE_ROLE_KEY !== "placeholder-service-role-key"
   );
 }

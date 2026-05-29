@@ -1,24 +1,25 @@
 /**
- * Stubbed Supabase client.
+ * Supabase clients for Tokenmaxx.
  *
- * Status: NOT CONFIGURED -- env vars pending Supabase provisioning.
+ * Two clients:
+ *   getSupabaseClient()       -- browser-safe, anon key, for future auth'd reads
+ *   getSupabaseServerClient() -- server-only, service role key, bypasses RLS
  *
- * Once NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are set,
- * this module returns a real typed Supabase client. Until then, read calls
- * throw a clear "not configured" error rather than silently returning null.
+ * Architecture decision: v0.1 dashboard has no auth UI. All data reads use
+ * the service role key server-side via Route Handlers. The anon key client
+ * is scaffolded for v0.2 when Supabase Auth is added.
  *
- * Swap-in target for v0.2: replace the stub branch with:
- *   import { createBrowserClient } from "@supabase/ssr";
- *   return createBrowserClient(url, key);
+ * CRITICAL: Never call getSupabaseServerClient() from browser-side code.
+ * It holds the service role key. Keep it in Route Handlers and RSC only.
  *
  * See: https://supabase.com/docs/guides/auth/server-side/nextjs
  */
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { env, isSupabaseConfigured } from "@/lib/env";
+import { env, isSupabaseConfigured, isServiceRoleConfigured } from "@/lib/env";
 import type { Database } from "@/lib/supabase/types";
 
-// Singleton for browser-side client
+// Singleton for browser-side client (anon key)
 let _browserClient: SupabaseClient<Database> | null = null;
 
 /**
@@ -53,7 +54,37 @@ export function getSupabaseClient(): SupabaseClient<Database> {
 }
 
 /**
+ * Returns a server-only Supabase client using the service role key.
+ * Bypasses RLS -- use ONLY in Route Handlers and RSC, never in browser code.
+ *
+ * Each call creates a new client instance (no singleton) because service-role
+ * clients should not be cached across requests in edge environments.
+ *
+ * Throws if service role key is not configured.
+ */
+export function getSupabaseServerClient(): SupabaseClient<Database> {
+  if (!isServiceRoleConfigured()) {
+    throw new Error(
+      "[Supabase] Service role key not configured. " +
+        "Set SUPABASE_SERVICE_ROLE_KEY (via wrangler secret or .env.local). " +
+        "Route Handlers will return seed data until this is set."
+    );
+  }
+
+  return createClient<Database>(
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY,
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    }
+  );
+}
+
+/**
  * Returns true when a real Supabase connection is available.
  * Pages use this to branch between live data and seed data.
  */
-export { isSupabaseConfigured };
+export { isSupabaseConfigured, isServiceRoleConfigured };
