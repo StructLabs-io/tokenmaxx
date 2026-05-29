@@ -33,7 +33,7 @@ Tokenmaxx answers four questions about your AI subscriptions:
 - **Next.js 15** + React 19 + TypeScript
 - **Tailwind v4** + shadcn/ui (new-york style)
 - **Supabase** (wired via `lib/supabase/client.ts` once provisioned)
-- **Cloudflare Pages** via `@cloudflare/next-on-pages`
+- **Cloudflare Workers** via `@opennextjs/cloudflare`
 - **recharts** for usage charts
 
 ## Getting started
@@ -43,11 +43,12 @@ npm install
 npm run dev
 ```
 
-To build for Cloudflare Pages:
+To build and preview for Cloudflare:
 
 ```bash
-npm run pages:build    # runs @cloudflare/next-on-pages
-npm run pages:dev      # serves the CF Pages output locally via wrangler
+npm run build:cf   # runs opennextjs-cloudflare build → .open-next/
+npm run preview    # runs opennextjs-cloudflare preview via wrangler dev
+npm run deploy     # deploys to Cloudflare Workers (requires wrangler login)
 ```
 
 ## Environment variables
@@ -63,15 +64,16 @@ Until these are set, the app renders seed data from `lib/seed-data.ts`.
 
 ## Known constraints (MVP)
 
-### Cloudflare Pages / `@cloudflare/next-on-pages`
+### Cloudflare Workers / `@opennextjs/cloudflare`
 
-- **Edge runtime only.** All server-side code runs on CF Workers (Edge runtime), not Node.js. API routes must declare `export const runtime = "edge"`.
-- **No Node.js middleware.** Middleware runs on the edge. Standard Node APIs are unavailable unless the `nodejs_compat` flag is enabled in `wrangler.toml`.
-- **No ISR.** Incremental Static Regeneration is not supported via the `next-on-pages` adapter. Pages are either static or fully dynamic (`ƒ` in build output).
+- **Edge runtime for API routes.** API routes that use Node.js APIs or server-only features must declare `export const runtime = "edge"`. The health route at `/api/health` already does this.
+- **Node.js compat via flag.** Standard Node.js APIs work when `nodejs_compat` is enabled in `wrangler.jsonc` (already set). Most Next.js server features work without declaring edge runtime explicitly.
+- **No ISR.** Incremental Static Regeneration is not supported. Pages are either statically prerendered or dynamically server-rendered.
 - **No PPR.** Partial Prerendering is not supported.
-- **`@cloudflare/next-on-pages` is deprecated** (as of May 2025). Cloudflare recommends the `@opennextjs/cloudflare` adapter instead. Migration is a v0.2 task -- the current adapter works for v0.1 scope.
-- **Next.js 15.3.2 has a known security vulnerability.** Upgrade to 15.3.3+ before public deployment.
+- **Static assets served from Workers Assets.** The `.open-next/assets` directory is bound as `ASSETS` in `wrangler.jsonc`. No separate Pages project needed -- this deploys as a standard Worker.
 - **Image optimization is disabled.** `images: { unoptimized: true }` is set in `next.config.mjs`. Use a CDN or CF Image Resizing for production.
+- **Streaming responses.** `@opennextjs/cloudflare` supports streaming SSR (unlike the old adapter). Streaming is available but not used in the current MVP.
+- **Build output.** `npm run build:cf` writes to `.open-next/`. The `.next/` directory is still created by `npm run build` (Next.js standard build) and is not deployed.
 
 ### Supabase
 
