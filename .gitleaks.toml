@@ -1,0 +1,13 @@
+title = "Tokenmaxx gitleaks config"
+
+[allowlist]
+description = "Allow documented placeholder values in setup guides and scripts"
+regexes = [
+  '''SUPABASE_SERVICE_ROLE_KEY''',
+  '''SUPABASE_PAT''',
+  '''CLOUDFLARE_API_TOKEN''',
+  '''TELEGRAM_BOT_TOKEN''',
+  '''your-.*-key''',
+  '''your-.*-token''',
+  '''<your-.*>'''
+]

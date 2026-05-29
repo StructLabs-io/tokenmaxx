@@ -1,155 +1,110 @@
 # Setup — What You (the Human) Must Do
 
-**Version:** v0.1
-**Status:** Draft — pending Ben's review
+**Version:** v0.2
+**Status:** Approved (v0.1)
 **Last updated:** 2026-05-29
 
 ## Changelog
 
 | Version | Date | Author | Changes |
 |---|---|---|---|
-| v0.1 | 2026-05-29 | An AI agent | Initial human setup guide |
+| v0.2 | 2026-05-29 | Kenji Ryu | Rewritten to thin human-only steps; agent does the rest |
+| v0.1 | 2026-05-29 | Human Approved | Initial human setup guide |
 
 ---
 
-These are the steps only you can take. They require a browser, account sign-ups, and human judgment. Once you've done them, hand off to your AI agent with [SETUP-AGENT.md](SETUP-AGENT.md).
+Your AI agent handles almost all of the setup. You only need to do the parts that require a browser, account sign-ups, and decisions only you can make.
+
+**Estimated time: ~5 minutes.**
 
 ---
 
-## Prerequisites
+## Step 1 — Sign up for Supabase
 
-- A machine running Claude Code and/or Codex CLI (where your AI usage actually happens)
-- A GitHub account (for Cloudflare Pages auto-deploy)
-- A Toggl account (optional — needed for project attribution)
-- A Telegram bot and chat (optional — needed for daily digest)
+Go to [supabase.com](https://supabase.com) and create a free account if you don't have one.
+
+No project needed yet — your agent will create that.
 
 ---
 
-## Step 1 — Fork or clone this repo
+## Step 2 — Generate a Supabase Personal Access Token
 
-Fork `tokenmaxx` on GitHub (or clone it privately if you want to keep your config out of the public repo).
+1. Go to [supabase.com/dashboard/account/tokens](https://supabase.com/dashboard/account/tokens)
+2. Click **Generate new token**
+3. Name it `tokenmaxx`
+4. Copy the token — you won't see it again
+
+---
+
+## Step 3 — Sign up for Cloudflare
+
+Go to [cloudflare.com](https://cloudflare.com) and create a free account if you don't have one.
+
+---
+
+## Step 4 — Generate a Cloudflare API token
+
+1. Go to **My Profile → API Tokens → Create Token**
+2. Use the **Edit Cloudflare Workers** template (covers Workers and Pages)
+3. Copy the token
+
+---
+
+## Step 5 — Put secrets in `.env.local`
+
+Clone the repo, then create `.env.local` at the repo root:
 
 ```bash
 git clone https://github.com/<your-org>/tokenmaxx.git
 cd tokenmaxx
+cp .env.example .env.local
 ```
 
-Keep your `.env` files out of git (they're already in `.gitignore`).
-
----
-
-## Step 2 — Create a Supabase project
-
-1. Go to [supabase.com](https://supabase.com) and sign up (free account works for solo use)
-2. Create a new project:
-   - **Name:** `tokenmaxx` (or your team name)
-   - **Database password:** generate a strong one and save it in your password manager
-   - **Region:** pick the region closest to where your capture scripts run
-3. Wait for the project to provision (~60 seconds)
-4. Go to **Project Settings → API** and copy:
-   - `Project URL` (looks like `https://abcdefghij.supabase.co`)
-   - `anon` / `public` key
-   - `service_role` key (secret — never expose this in a browser)
-
-> **Supabase free tier:** 500 MB database, project pauses after 7 days inactivity. For daily use, upgrade to Pro ($25/mo) to avoid pausing. Your AI agent can't wake a paused Supabase project.
-
----
-
-## Step 3 — Create a Cloudflare Pages project
-
-1. Go to [cloudflare.com](https://cloudflare.com) and sign up or log in
-2. Navigate to **Pages → Create a project → Connect to Git**
-3. Select your forked/cloned `tokenmaxx` repo
-4. Configure build settings:
-   - **Framework preset:** Next.js
-   - **Build command:** `npx @cloudflare/next-on-pages`
-   - **Build output directory:** `.vercel/output/static`
-   - **Node version:** 20 or later (set in Environment Variables: `NODE_VERSION = 20`)
-5. Click **Save and Deploy** — the first deploy will fail until you add environment variables (next step)
-
----
-
-## Step 4 — Add environment variables to Cloudflare Pages
-
-In your Cloudflare Pages project → **Settings → Environment variables**, add:
-
-| Variable | Value | Notes |
-|---|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase project URL | From Step 2 |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Your Supabase anon key | From Step 2 |
-
-> Do not add the `service_role` key to Pages environment variables. It never goes to the browser.
-
-Redeploy the project after adding these variables.
-
----
-
-## Step 5 — Create your `.env` files for capture scripts
-
-On each machine where you run Claude Code or Codex CLI, create:
-
-```
-~/.config/tokenmaxx/.env
-```
-
-With these values (your agent can help you fill this in):
+Fill in your values:
 
 ```bash
-SUPABASE_URL=https://<project>.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
-TOKENMAXX_WORKSPACE_SLUG=<your-workspace-name>
-TOKENMAXX_USER_SLUG=<your-machine-name>   # e.g. "my-macbook" or "home-server"
+# Supabase (from Steps 1–2)
+SUPABASE_PAT=<your-supabase-personal-access-token>
+SUPABASE_ORG_ID=<your-org-id>          # visible in the Supabase dashboard URL
 
-# Optional — Toggl
-TOGGL_API_TOKEN=<your-toggl-pat>
+# Cloudflare (from Steps 3–4)
+CLOUDFLARE_API_TOKEN=<your-cloudflare-api-token>
+CLOUDFLARE_ACCOUNT_ID=<your-account-id>   # visible in your Cloudflare dashboard sidebar
 
-# Optional — for quota capture (v1.0)
-# CLAUDE_SESSION_COOKIE=<your-claude.ai-session-cookie>
+# Optional — Telegram digest (see Step 6)
+# TELEGRAM_BOT_TOKEN=
+# TELEGRAM_CHAT_ID=
 ```
 
-Set permissions: `chmod 600 ~/.config/tokenmaxx/.env`
+Your org ID and account ID are visible in the URL bar of each dashboard after you sign in.
 
 ---
 
 ## Step 6 — Optional: set up Telegram digest
 
-If you want a daily Telegram summary:
+If you want a daily summary of your AI usage in Telegram:
 
-1. Chat with [@BotFather](https://t.me/BotFather) on Telegram → create a new bot → copy the bot token
-2. Add the bot to a Telegram group or channel, or use your personal chat
-3. Get the chat ID (ask the bot `/start`, then visit `https://api.telegram.org/bot<token>/getUpdates`)
-4. In Supabase → **Vault** (or Project Settings → Vault), create two secrets:
-   - `TELEGRAM_BOT_TOKEN` = your bot token
-   - `TELEGRAM_CHAT_ID` = your chat/group ID
+1. Chat with [@BotFather](https://t.me/BotFather) on Telegram — create a new bot — copy the bot token
+2. Add the bot to a group or use your personal chat
+3. Get the chat ID (send `/start` to the bot, then visit `https://api.telegram.org/bot<token>/getUpdates`)
+4. Add `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` to `.env.local`
 
-Your agent will configure the digest schedule once secrets are in place.
+Your agent will configure the rest.
 
 ---
 
 ## Step 7 — Hand off to your AI agent
 
-You've done the human-only steps. Now give your AI agent this checklist and tell it to follow [SETUP-AGENT.md](SETUP-AGENT.md):
+You're done. Tell your agent:
 
-- [x] Supabase project created — URL and keys saved to `.env`
-- [x] Cloudflare Pages project created and connected to repo
-- [x] Environment variables added to Pages
-- [x] `.env` files created on capture machines
-- [ ] Schema migrations applied (agent does this)
-- [ ] Cron configured (agent does this)
-- [ ] End-to-end test (agent does this)
+> "Set up Tokenmaxx. Follow `docs/SETUP-AGENT.md`. My `.env.local` is ready."
+
+Your agent will provision the Supabase project, apply the schema, configure capture cron, deploy the dashboard, and report back the URL.
 
 ---
 
-## Troubleshooting common issues
+## Troubleshooting
 
-**Supabase project is paused**
-Free-tier projects pause after 7 days of inactivity. Visit your Supabase dashboard to unpause. Upgrade to Pro to avoid this.
+**Supabase free tier pauses after 7 days of inactivity.** Visit your Supabase dashboard to unpause. Upgrade to Pro ($25/mo) if you're using this daily.
 
-**Cloudflare Pages build fails**
-Check the build log for missing environment variables or Node.js version issues. Ensure `NODE_VERSION = 20` is set.
-
-**Service role key exposed in git**
-If you accidentally commit a `.env` file, rotate the service role key immediately in Supabase → Settings → API → Rotate.
-
-**No data appearing in dashboard**
-Run a capture script manually once (`node scripts/local-capture.js`) and check for errors. Verify your `.env` is readable and Supabase is awake.
+**Cloudflare token permissions.** If the agent hits a 403 on Pages, check that your token includes `Cloudflare Pages: Edit` scope in addition to Workers.

@@ -10,7 +10,8 @@
     "build:cf": "opennextjs-cloudflare build",
     "preview": "opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare deploy",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "seed:dev": "node scripts/seed-dev.js"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.4",

@@ -1,20 +1,21 @@
-# Setup — What Your AI Agent Can Do
+# Setup — What Your AI Agent Does
 
-**Version:** v0.1
-**Status:** Draft — pending Ben's review
+**Version:** v0.2
+**Status:** Approved (v0.1)
 **Last updated:** 2026-05-29
 
 ## Changelog
 
 | Version | Date | Author | Changes |
 |---|---|---|---|
-| v0.1 | 2026-05-29 | An AI agent | Initial agent setup guide |
+| v0.2 | 2026-05-29 | Kenji Ryu | Rewritten as concrete agent-executable commands |
+| v0.1 | 2026-05-29 | Human Approved | Initial agent setup guide |
 
 ---
 
-This guide is written for an AI agent (Claude Code, Codex, or similar) helping a human set up Tokenmaxx.
+This guide is written for an AI agent (Claude Code, Codex, or similar) setting up Tokenmaxx on behalf of a human.
 
-**Read [SETUP-HUMAN.md](SETUP-HUMAN.md) first.** Your human must complete those steps before you begin. Check each prerequisite before proceeding.
+**Read [SETUP-HUMAN.md](SETUP-HUMAN.md) first.** The human must complete those steps and have `.env.local` ready before you start.
 
 ---
 
@@ -22,107 +23,160 @@ This guide is written for an AI agent (Claude Code, Codex, or similar) helping a
 
 Before starting, verify:
 
-1. Supabase project URL and service-role key are in `~/.config/tokenmaxx/.env` — run `cat ~/.config/tokenmaxx/.env` and confirm the values are present and non-empty
-2. Cloudflare Pages project exists and is connected to the repo — ask the human to confirm the Pages project URL
-3. `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are set in the Pages environment — ask the human to confirm
-4. Node.js 18+ is installed on the machine you're operating on
+```bash
+# .env.local exists and has the required keys
+cat .env.local | grep -E "SUPABASE_PAT|SUPABASE_ORG_ID|CLOUDFLARE_API_TOKEN|CLOUDFLARE_ACCOUNT_ID"
+```
 
-If any prerequisite is missing, surface the gap and stop. Do not attempt to create Supabase projects, Cloudflare accounts, or API keys — those are human-only steps.
+All four must be non-empty. If any are missing, stop and ask the human to complete [SETUP-HUMAN.md](SETUP-HUMAN.md).
+
+Also verify Node.js 22+ and the Supabase CLI are installed:
+
+```bash
+node --version   # must be >= 22
+supabase --version || npm install -g supabase
+```
 
 ---
 
-## Step 1 — Apply schema migrations
+## Step 1 — Create the Supabase project
 
-From the repo root:
+Use the Supabase Management API to create a new project under the human's org:
 
 ```bash
-# Install Supabase CLI if not present
-npm install -g supabase
+source .env.local
 
-# Link to the project (requires SUPABASE_PROJECT_REF from the project URL)
-# e.g. if URL is https://abcdefghij.supabase.co, ref is "abcdefghij"
-supabase link --project-ref <ref>
+curl -s -X POST "https://api.supabase.com/v1/projects" \
+  -H "Authorization: Bearer $SUPABASE_PAT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "tokenmaxx",
+    "organization_id": "'"$SUPABASE_ORG_ID"'",
+    "plan": "free",
+    "region": "us-east-1",
+    "db_pass": "'"$(openssl rand -base64 24)"'"
+  }' | tee /tmp/supabase-project.json
+```
 
-# Apply all migrations in order
+Extract the project ref and URL:
+
+```bash
+PROJECT_REF=$(cat /tmp/supabase-project.json | node -e "process.stdin.resume();let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>console.log(JSON.parse(d).id))")
+PROJECT_URL="https://${PROJECT_REF}.supabase.co"
+```
+
+Wait for the project to be ready (usually < 60 seconds):
+
+```bash
+until curl -sf "$PROJECT_URL/rest/v1/" -H "apikey: placeholder" | grep -q "Invalid"; do sleep 5; done
+echo "Project ready: $PROJECT_URL"
+```
+
+Retrieve the project keys:
+
+```bash
+curl -s "https://api.supabase.com/v1/projects/$PROJECT_REF/api-keys" \
+  -H "Authorization: Bearer $SUPABASE_PAT" | tee /tmp/supabase-keys.json
+```
+
+Append the project credentials to `.env.local`:
+
+```bash
+ANON_KEY=$(cat /tmp/supabase-keys.json | node -e "process.stdin.resume();let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{const keys=JSON.parse(d);console.log(keys.find(k=>k.name==='anon').api_key)})")
+SERVICE_ROLE_KEY=$(cat /tmp/supabase-keys.json | node -e "process.stdin.resume();let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{const keys=JSON.parse(d);console.log(keys.find(k=>k.name==='service_role').api_key)})")
+
+cat >> .env.local <<EOF
+
+# Added by setup agent
+NEXT_PUBLIC_SUPABASE_URL=$PROJECT_URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY
+SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY
+SUPABASE_PROJECT_REF=$PROJECT_REF
+EOF
+```
+
+Also create the capture config:
+
+```bash
+mkdir -p ~/.config/tokenmaxx
+cat > ~/.config/tokenmaxx/.env <<EOF
+SUPABASE_URL=$PROJECT_URL
+SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY
+TOKENMAXX_WORKSPACE_SLUG=default
+TOKENMAXX_USER_SLUG=$(hostname)
+EOF
+chmod 600 ~/.config/tokenmaxx/.env
+```
+
+---
+
+## Step 2 — Apply schema migrations
+
+```bash
+source .env.local
+
+supabase link --project-ref $SUPABASE_PROJECT_REF
 supabase db push
 ```
 
-Verify success by checking that the following tables exist in Supabase Studio → Table Editor:
-- `workspaces`, `users`, `workspace_members`
-- `subscriptions`, `subscription_members`
-- `projects`, `toggl_entries`
-- `usage_events`
-- `quota_windows`, `quota_observations`
-- `pricing_snapshots`, `fx_rates`
-- `attribution_overrides`
-
-If any migration fails, check the error message, fix the migration file, and re-run.
-
----
-
-## Step 2 — Seed initial workspace and user rows
-
-Tokenmaxx uses a workspace model. Insert the human's workspace and user manually for v0.1 (no auth UI yet):
-
-```sql
--- Run in Supabase Studio → SQL Editor
-
-insert into workspaces (slug, display_name, timezone)
-values ('my-workspace', 'My Workspace', 'Asia/Kuala_Lumpur');  -- adjust timezone
-
-insert into users (slug, display_name, account_type, email)
-values ('my-laptop', 'My Laptop', 'service', null);
-
-insert into workspace_members (workspace_id, user_id, role)
-select w.id, u.id, 'admin'
-from workspaces w, users u
-where w.slug = 'my-workspace' and u.slug = 'my-laptop';
-```
-
-Update `TOKENMAXX_WORKSPACE_SLUG` and `TOKENMAXX_USER_SLUG` in `~/.config/tokenmaxx/.env` to match the slugs you inserted.
-
-For a server (e.g. a VPS running AI tools), add a second `users` row with a different slug and repeat the `workspace_members` insert.
-
----
-
-## Step 3 — Install Node dependencies and test a capture run
+Verify the core tables exist:
 
 ```bash
-# From repo root
-npm install
-
-# Test local capture script (dry run)
-node scripts/local-capture.js --dry-run
-
-# If dry run succeeds, run for real
-node scripts/local-capture.js
+supabase db execute --command "\dt" | grep -E "workspaces|users|usage_events|projects"
 ```
 
-Check the output log at `~/.config/tokenmaxx/logs/local-capture-<today>.log`. You should see rows inserted or "nothing new to capture."
-
-If the script exits with an error, read the log and fix the issue before proceeding.
+All four should appear. If any migration fails, read the error, fix the file, and re-run `supabase db push`.
 
 ---
 
-## Step 4 — Configure the capture cron
+## Step 3 — Seed config tables
 
-Add to the human's crontab (`crontab -e`):
+Insert the initial workspace and user rows:
 
-```cron
-# Tokenmaxx local capture — runs daily at 05:00 local time
-0 5 * * * /usr/bin/node /path/to/tokenmaxx/scripts/local-capture.js >> ~/.config/tokenmaxx/logs/cron.log 2>&1
+```bash
+supabase db execute --command "
+INSERT INTO workspaces (slug, display_name, timezone)
+VALUES ('default', 'My Workspace', 'UTC')
+ON CONFLICT (slug) DO NOTHING;
+
+INSERT INTO users (slug, display_name, account_type)
+VALUES ('$(hostname)', '$(hostname)', 'service')
+ON CONFLICT (slug) DO NOTHING;
+
+INSERT INTO workspace_members (workspace_id, user_id, role)
+SELECT w.id, u.id, 'admin'
+FROM workspaces w, users u
+WHERE w.slug = 'default' AND u.slug = '$(hostname)'
+ON CONFLICT DO NOTHING;
+"
 ```
 
-Adjust the path to match the repo location and the Node binary path (`which node`).
+---
 
-For a server running additional AI tools, also add an entry for `scripts/server-capture.js` using the server's Node binary and the server's `.env` path.
+## Step 4 — Configure local capture cron
+
+Install dependencies and test the capture script once:
+
+```bash
+npm install
+node scripts/local-capture.js --dry-run
+```
+
+If dry run succeeds, add the cron entry:
+
+```bash
+REPO_PATH=$(pwd)
+NODE_BIN=$(which node)
+
+(crontab -l 2>/dev/null; echo "0 5 * * * $NODE_BIN $REPO_PATH/scripts/local-capture.js >> ~/.config/tokenmaxx/logs/cron.log 2>&1") | crontab -
+crontab -l | grep local-capture   # confirm it's there
+```
 
 ---
 
 ## Step 5 — Deploy Edge Functions
 
 ```bash
-# Deploy all Edge Functions to the linked Supabase project
 supabase functions deploy toggl-sync
 supabase functions deploy pricing-pull
 supabase functions deploy fx-rate
@@ -130,100 +184,85 @@ supabase functions deploy daily-telegram
 supabase functions deploy attribute-events
 ```
 
-Verify each function appears in Supabase Dashboard → Edge Functions.
-
-If the human set up Telegram (see SETUP-HUMAN.md Step 6), the `daily-telegram` function will use the Vault secrets automatically.
-
----
-
-## Step 6 — Configure pg_cron schedules
-
-In Supabase Studio → SQL Editor, apply the pg_cron migration:
+If `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are set in `.env.local`, store them as Supabase secrets:
 
 ```bash
-supabase db push --include-all  # if not already done above
+source .env.local
+if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
+  supabase secrets set TELEGRAM_BOT_TOKEN="$TELEGRAM_BOT_TOKEN" TELEGRAM_CHAT_ID="$TELEGRAM_CHAT_ID"
+fi
 ```
-
-Or run the cron schedule SQL directly from `migrations/012_pg_cron_schedules.sql`. Verify in Studio → Database → Cron Jobs that the following jobs are listed:
-- `toggl-sync` (hourly)
-- `pricing-pull` (daily)
-- `fx-rate` (daily)
-- `daily-telegram` (daily)
-- `attribute-events` (every 6h)
 
 ---
 
-## Step 7 — Deploy the Next.js app
-
-If Cloudflare Pages is configured with auto-deploy from the connected repo:
+## Step 6 — Deploy the dashboard to Cloudflare Pages
 
 ```bash
-git add .
-git commit -m "feat: initial tokenmaxx setup"
-git push origin main
+source .env.local
+
+# Build
+npm run build:cf
+
+# Deploy (first time creates the project)
+npx wrangler pages project create tokenmaxx --production-branch main 2>/dev/null || true
+npx wrangler pages deploy .open-next/assets \
+  --project-name tokenmaxx \
+  --branch main
+
+# Set env vars on Cloudflare Pages
+npx wrangler pages project vars set \
+  --project-name tokenmaxx \
+  NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
+  NEXT_PUBLIC_SUPABASE_ANON_KEY="$NEXT_PUBLIC_SUPABASE_ANON_KEY"
 ```
 
-Cloudflare Pages will build and deploy automatically. Monitor the build in the Pages dashboard. The first successful build takes 2–4 minutes.
-
-Verify the dashboard loads at the Pages project URL. Check that:
-- The `/` page renders without errors
-- No "Failed to fetch" or CORS errors in the browser console
+Capture the deploy URL from the output and note it for the human.
 
 ---
 
-## Step 8 — Verify end-to-end with a test event
+## Step 7 — Verify end-to-end
 
-Insert a test usage event directly to confirm the full stack:
+Insert a test event and confirm it appears in the dashboard:
 
-```sql
--- Supabase Studio → SQL Editor
-insert into usage_events (
-  workspace_id, user_id, captured_at, date_utc, date_local,
+```bash
+supabase db execute --command "
+INSERT INTO usage_events (
+  workspace_id, user_id, captured_at, date_utc,
   provider, model, capture_method, aggregation_grain,
   input_tokens, output_tokens, token_share_pct
 )
-select
-  w.id, u.id, now(), current_date, current_date,
-  'anthropic', 'claude-sonnet-4-6', 'anthropic.claude_code.cli.personal_dev', 'session',
+SELECT w.id, u.id, now(), current_date,
+  'anthropic', 'claude-sonnet-4-6',
+  'anthropic.claude_code.cli.personal_dev', 'session',
   1000, 500, 100.0
-from workspaces w, users u
-where w.slug = 'my-workspace' and u.slug = 'my-laptop';
+FROM workspaces w, users u
+WHERE w.slug = 'default' AND u.slug = '$(hostname)';
+"
 ```
 
-Then open the dashboard `/raw` page. The test event should appear within a few seconds (Supabase Realtime). If it doesn't appear, check the browser console and the Supabase Realtime channel subscription.
-
-Delete the test row after verification:
-
-```sql
-delete from usage_events where notes is null and input_tokens = 1000 and output_tokens = 500;
-```
-
----
-
-## Suggested skills and MCPs
-
-If you have access to Supabase MCP, use it for the SQL steps — it handles connection, auth, and error surfacing automatically.
-
-For cron configuration on Linux/Mac, the Bash tool is sufficient. No special MCP needed.
-
-For Cloudflare Pages environment variables, use the Cloudflare dashboard directly or the `wrangler` CLI:
+Open the dashboard `/raw` page. The test event should appear within a few seconds. Then clean up:
 
 ```bash
-npx wrangler pages project list  # verify project exists
+supabase db execute --command "
+DELETE FROM usage_events WHERE input_tokens = 1000 AND output_tokens = 500;
+"
 ```
 
 ---
 
-## Done
+## Done — report back to the human
 
-When all 8 steps pass:
+When all steps pass, report:
 
-- [ ] Schema migrations applied, all tables present
+- Deploy URL (from Step 6)
+- Any steps that needed manual intervention or produced errors
+- Crontab entry installed (`crontab -l` output)
+
+Checklist:
+- [ ] Supabase project created — URL recorded in `.env.local`
+- [ ] Schema migrations applied — all tables present
 - [ ] Workspace and user rows seeded
-- [ ] Local capture cron running (`crontab -l` shows the entry)
-- [ ] Edge Functions deployed and showing in Supabase dashboard
-- [ ] pg_cron jobs scheduled
-- [ ] Dashboard renders at Cloudflare Pages URL
+- [ ] Local capture cron installed
+- [ ] Edge Functions deployed
+- [ ] Dashboard deployed at Cloudflare Pages URL
 - [ ] Test event appeared in `/raw` feed
-
-Report the results to the human and flag any steps that needed manual intervention or produced errors.
