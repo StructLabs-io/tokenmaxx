@@ -9,6 +9,7 @@ import {
   Table2,
   Zap,
   Cpu,
+  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -82,13 +83,16 @@ export function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="border-t border-sidebar-border px-4 py-3">
-        <p className="text-xs text-muted-foreground">
-          Seed data mode
-        </p>
-        <p className="text-xs text-muted-foreground truncate">
-          Supabase not configured
-        </p>
+      <div className="border-t border-sidebar-border px-2 py-3">
+        <form action="/auth/logout" method="POST">
+          <button
+            type="submit"
+            className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          >
+            <LogOut className="h-4 w-4 shrink-0" />
+            Sign out
+          </button>
+        </form>
       </div>
     </aside>
   );
