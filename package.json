@@ -7,9 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "pages:build": "npx @cloudflare/next-on-pages",
-    "pages:dev": "npx wrangler pages dev .vercel/output/static --compatibility-date=2025-01-01",
-    "preview": "npm run pages:build && npm run pages:dev",
+    "build:cf": "opennextjs-cloudflare build",
+    "preview": "opennextjs-cloudflare preview",
+    "deploy": "opennextjs-cloudflare deploy",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -26,27 +26,26 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.511.0",
-    "next": "15.3.2",
+    "next": "15.5.18",
     "next-themes": "^0.4.6",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
     "recharts": "^2.15.3",
     "sonner": "^2.0.3",
     "tailwind-merge": "^3.3.0",
     "zod": "^3.24.4"
   },
   "devDependencies": {
-    "@cloudflare/next-on-pages": "^1.13.10",
+    "@opennextjs/cloudflare": "^1.19.11",
     "@tailwindcss/postcss": "^4.3.0",
     "@types/node": "^22.15.21",
     "@types/react": "^19.1.5",
     "@types/react-dom": "^19.1.5",
     "eslint": "^9.27.0",
-    "eslint-config-next": "15.3.2",
+    "eslint-config-next": "15.5.18",
     "postcss": "^8.5.3",
     "tailwindcss": "^4.1.8",
     "typescript": "^5.8.3",
-    "vercel": "^44.2.7",
-    "wrangler": "^4.16.0"
+    "wrangler": "^4.95.0"
   }
 }
