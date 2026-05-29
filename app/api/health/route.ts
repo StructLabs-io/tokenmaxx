@@ -1,12 +1,12 @@
 /**
  * GET /api/health
  *
- * Edge runtime health check endpoint.
+ * Health check endpoint.
  * Returns {ok: true, version} with 200.
- * CF Pages compatible -- no Node.js APIs used.
+ * CF Workers compatible -- runtime="edge" removed because OpenNext on CF Workers
+ * treats all routes as edge by default; explicit edge runtime declaration
+ * requires a separate function config and breaks the OpenNext bundle.
  */
-
-export const runtime = "edge";
 
 export async function GET() {
   return Response.json(
