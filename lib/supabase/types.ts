@@ -255,3 +255,23 @@ export interface UsageEventRow {
   cost_usd: number | null;
   session_id: string | null;
 }
+
+/** User with rolled-up 30-day token/cost totals — for /users page */
+export interface UserSummaryRow {
+  id: string;
+  slug: string;
+  display_name: string;
+  account_type: "human" | "service";
+  email: string | null;
+  default_timezone: string;
+  total_tokens: number;
+  cost_usd: number | null;
+}
+
+/** Input shape for creating a new project */
+export interface CreateProjectInput {
+  display_name: string;
+  slug: string;
+  client?: string;
+  billable: boolean;
+}

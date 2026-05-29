@@ -12,7 +12,7 @@
  */
 
 import { isServiceRoleConfigured, getSupabaseServerClient } from "@/lib/supabase/client";
-import type { DashboardStats, DailyTotal, ProjectTotals, UsageEvent, Project, ModelBreakdownRow, SubscriptionSummary, QuotaWindowWithUsage } from "@/lib/supabase/types";
+import type { DashboardStats, DailyTotal, ProjectTotals, UsageEvent, Project, ModelBreakdownRow, SubscriptionSummary, QuotaWindowWithUsage, UserSummaryRow } from "@/lib/supabase/types";
 import {
   SEED_USAGE_EVENTS,
   SEED_PROJECTS,
@@ -934,6 +934,107 @@ export async function getUnattributedGroups(): Promise<UnattributedGroup[]> {
   } catch (err) {
     console.error("[data.getUnattributedGroups] Unexpected error:", err);
     return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Users summary (for /users page)
+// ---------------------------------------------------------------------------
+
+export async function getUsersSummary(days = 30): Promise<{
+  users: UserSummaryRow[];
+  totalHuman: number;
+  totalService: number;
+  totalTokens: number;
+  usingSeedData: boolean;
+}> {
+  if (!isServiceRoleConfigured()) {
+    // Seed fallback — derive from SEED_USERS + SEED_USAGE_EVENTS
+    const byUser = new Map<string, { tokens: number; cost: number | null }>();
+    for (const e of SEED_USAGE_EVENTS) {
+      const existing = byUser.get(e.user_id) ?? { tokens: 0, cost: null };
+      byUser.set(e.user_id, {
+        tokens: existing.tokens + e.total_tokens,
+        cost: e.cost_usd != null ? (existing.cost ?? 0) + e.cost_usd : existing.cost,
+      });
+    }
+    const users: UserSummaryRow[] = SEED_USERS.map((u) => ({
+      id: u.id,
+      slug: u.slug,
+      display_name: u.display_name,
+      account_type: u.account_type,
+      email: u.email,
+      default_timezone: u.default_timezone,
+      total_tokens: byUser.get(u.id)?.tokens ?? 0,
+      cost_usd: byUser.get(u.id)?.cost ?? null,
+    })).sort((a, b) => b.total_tokens - a.total_tokens);
+
+    const totalHuman = users.filter((u) => u.account_type === "human").length;
+    const totalService = users.filter((u) => u.account_type === "service").length;
+    const totalTokens = users.reduce((s, u) => s + u.total_tokens, 0);
+    return { users, totalHuman, totalService, totalTokens, usingSeedData: true };
+  }
+
+  try {
+    const supabase = getSupabaseServerClient();
+
+    // Fetch all active users
+    const { data: userRows, error: userErr } = await supabase
+      .from("users")
+      .select("id,slug,display_name,account_type,email,default_timezone")
+      .is("deleted_at", null)
+      .order("display_name") as { data: any[] | null; error: any };
+
+    if (userErr || !userRows) {
+      console.error("[data.getUsersSummary] Users error:", userErr);
+      return { users: [], totalHuman: 0, totalService: 0, totalTokens: 0, usingSeedData: false };
+    }
+
+    // Fetch usage events for the period
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+    const cutoffDate = cutoff.toISOString().slice(0, 10);
+
+    const userIds = (userRows as any[]).map((u) => u.id);
+    const { data: events, error: evtErr } = await supabase
+      .from("usage_events")
+      .select("user_id,total_tokens,cost_usd")
+      .in("user_id", userIds)
+      .gte("date_utc", cutoffDate) as { data: any[] | null; error: any };
+
+    if (evtErr) {
+      console.error("[data.getUsersSummary] Events error:", evtErr);
+    }
+
+    const byUser = new Map<string, { tokens: number; cost: number | null }>();
+    for (const e of (events ?? []) as any[]) {
+      if (!e.user_id) continue;
+      const existing = byUser.get(e.user_id) ?? { tokens: 0, cost: null };
+      byUser.set(e.user_id, {
+        tokens: existing.tokens + (e.total_tokens ?? 0),
+        cost: e.cost_usd != null ? (existing.cost ?? 0) + e.cost_usd : existing.cost,
+      });
+    }
+
+    const users: UserSummaryRow[] = (userRows as any[]).map((u) => ({
+      id: u.id,
+      slug: u.slug,
+      display_name: u.display_name,
+      account_type: u.account_type as "human" | "service",
+      email: u.email,
+      default_timezone: u.default_timezone,
+      total_tokens: byUser.get(u.id)?.tokens ?? 0,
+      cost_usd: byUser.get(u.id)?.cost ?? null,
+    })).sort((a, b) => b.total_tokens - a.total_tokens);
+
+    const totalHuman = users.filter((u) => u.account_type === "human").length;
+    const totalService = users.filter((u) => u.account_type === "service").length;
+    const totalTokens = users.reduce((s, u) => s + u.total_tokens, 0);
+
+    return { users, totalHuman, totalService, totalTokens, usingSeedData: false };
+  } catch (err) {
+    console.error("[data.getUsersSummary] Unexpected error:", err);
+    return { users: [], totalHuman: 0, totalService: 0, totalTokens: 0, usingSeedData: false };
   }
 }
 

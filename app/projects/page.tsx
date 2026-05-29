@@ -1,48 +1,65 @@
 /**
  * /projects -- Project list with token + cost totals
  *
- * Server component: fetches project list from lib/data.ts (getProjectsList).
+ * Server Component: fetches project list from lib/data.ts (getProjectsList).
+ * Renders ProjectsClient for interactive add/edit functionality.
  * Falls back to seed data when Supabase is not configured.
  */
 
-import Link from "next/link";
-import { getProjectsList } from "@/lib/data";
+import { getProjectsList, isServiceRoleConfigured } from "@/lib/data";
+import { getSupabaseServerClient } from "@/lib/supabase/client";
 import { formatTokens, formatCost } from "@/lib/utils";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { ProjectsClient } from "./client";
 
 export const dynamic = "force-dynamic";
 
+async function getProjectsWithBillable(days = 30) {
+  const base = await getProjectsList(days);
+
+  if (base.usingSeedData || !isServiceRoleConfigured()) {
+    // Seed data doesn't carry billable — default true
+    return {
+      ...base,
+      projects: base.projects.map((p) => ({ ...p, billable: true })),
+    };
+  }
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const { data } = await supabase
+      .from("projects")
+      .select("id,billable")
+      .is("deleted_at", null) as { data: any[] | null };
+
+    const billableMap = new Map<string, boolean>(
+      (data ?? []).map((r: any) => [r.id, r.billable])
+    );
+
+    return {
+      ...base,
+      projects: base.projects.map((p) => ({
+        ...p,
+        billable: billableMap.get(p.id) ?? true,
+      })),
+    };
+  } catch {
+    return {
+      ...base,
+      projects: base.projects.map((p) => ({ ...p, billable: true })),
+    };
+  }
+}
+
 export default async function ProjectsPage() {
   const { projects, totalEvents, totalCost, unattributedCount, usingSeedData } =
-    await getProjectsList(30);
+    await getProjectsWithBillable(30);
 
   const totalTokens = projects.reduce((s, p) => s + p.totalTokens, 0);
 
   return (
     <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">Projects</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            AI usage by project (30-day window)
-          </p>
-        </div>
-        <Badge variant={usingSeedData ? "secondary" : "outline"} className="text-xs">
-          {usingSeedData ? "Seed data" : `${totalEvents.toLocaleString()} events`}
-        </Badge>
-      </div>
-
-      {/* Summary */}
+      {/* Summary cards */}
       <div className="grid grid-cols-3 gap-4">
         <Card className="gap-2 py-4">
           <CardHeader className="px-4">
@@ -69,88 +86,13 @@ export default async function ProjectsPage() {
         </Card>
       </div>
 
-      {/* Projects table */}
-      <Card>
-        <CardHeader className="px-6">
-          <CardTitle className="text-sm font-medium">All projects</CardTitle>
-        </CardHeader>
-        <CardContent className="px-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="pl-6">Project</TableHead>
-                <TableHead className="text-right">Tokens</TableHead>
-                <TableHead className="text-right">% of tokens</TableHead>
-                <TableHead className="text-right">Cost</TableHead>
-                <TableHead className="pr-6" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {projects
-                .sort((a, b) => b.totalTokens - a.totalTokens)
-                .map((project) => (
-                  <TableRow key={project.id}>
-                    <TableCell className="pl-6">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="h-2.5 w-2.5 rounded-full shrink-0"
-                          style={{ background: "#6366f1" }}
-                        />
-                        <span className="font-medium">{project.display_name}</span>
-                        {project.client && (
-                          <span className="text-xs text-muted-foreground">
-                            · {project.client}
-                          </span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-muted-foreground">
-                      {formatTokens(project.totalTokens)}
-                    </TableCell>
-                    <TableCell className="text-right text-muted-foreground">
-                      {totalTokens > 0
-                        ? `${Math.round((project.totalTokens / totalTokens) * 100)}%`
-                        : "—"}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {project.totalCost != null ? formatCost(project.totalCost) : "—"}
-                    </TableCell>
-                    <TableCell className="pr-6">
-                      <Link
-                        href={`/projects/${project.slug}`}
-                        className="text-xs text-primary hover:underline"
-                      >
-                        Details
-                      </Link>
-                    </TableCell>
-                  </TableRow>
-                ))}
-
-              {/* Unattributed row */}
-              {unattributedCount > 0 && (
-                <TableRow>
-                  <TableCell className="pl-6">
-                    <div className="flex items-center gap-2">
-                      <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground shrink-0" />
-                      <span className="text-muted-foreground italic">
-                        Unattributed
-                      </span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums text-muted-foreground">
-                    —
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">—</TableCell>
-                  <TableCell className="text-right tabular-nums text-muted-foreground">
-                    —
-                  </TableCell>
-                  <TableCell className="pr-6" />
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      {/* Interactive projects table (client component) */}
+      <ProjectsClient
+        projects={projects}
+        totalTokens={totalTokens}
+        unattributedCount={unattributedCount}
+        usingSeedData={usingSeedData}
+      />
     </div>
   );
 }

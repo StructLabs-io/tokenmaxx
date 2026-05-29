@@ -14,6 +14,7 @@ import {
   Sparkles,
   GitMerge,
   LogOut,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -62,6 +63,11 @@ const NAV_ITEMS = [
     href: "/reconcile",
     label: "Reconcile",
     icon: GitMerge,
+  },
+  {
+    href: "/users",
+    label: "Users",
+    icon: Users,
   },
 ];
 

@@ -1,18 +1,18 @@
 /**
- * GET /api/projects
+ * /api/projects
  *
- * Returns all active projects with rolled-up token/cost totals.
+ * GET  — Returns all active projects with rolled-up token/cost totals.
+ *         Query params: days=30 (lookback, default 30, max 365)
+ *
+ * POST — Creates a new project.
+ *         Body: { display_name, slug, client?, billable }
+ *
  * Uses service role key (server-only) -- bypasses RLS.
- *
- * Query params:
- *   days=30  (lookback for token/cost totals, default 30, max 365)
- *
- * Response: Array of ProjectTotals JSON
  */
 
 import { NextRequest } from "next/server";
 import { getSupabaseServerClient, isServiceRoleConfigured } from "@/lib/supabase/client";
-import type { ProjectTotals } from "@/lib/supabase/types";
+import type { ProjectTotals, CreateProjectInput } from "@/lib/supabase/types";
 
 const DEFAULT_DAYS = 30;
 const MAX_DAYS = 365;
@@ -100,6 +100,71 @@ export async function GET(req: NextRequest) {
     });
   } catch (err) {
     console.error("[/api/projects] Unexpected error:", err);
+    return Response.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+// ---- POST ---------------------------------------------------------------
+
+export async function POST(req: NextRequest) {
+  if (!isServiceRoleConfigured()) {
+    return Response.json({ error: "Supabase not configured" }, { status: 503 });
+  }
+
+  let body: CreateProjectInput;
+  try {
+    body = await req.json() as CreateProjectInput;
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const { display_name, slug, client, billable } = body;
+  if (!display_name?.trim() || !slug?.trim()) {
+    return Response.json(
+      { error: "Missing required fields: display_name, slug" },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const supabase = getSupabaseServerClient();
+
+    // Resolve workspace_id from any existing project (single-tenant assumption)
+    const { data: existing } = await supabase
+      .from("projects")
+      .select("workspace_id")
+      .limit(1)
+      .single() as { data: any | null };
+
+    if (!existing?.workspace_id) {
+      return Response.json({ error: "No workspace found" }, { status: 422 });
+    }
+
+    const { data: inserted, error } = await (supabase
+      .from("projects") as any)
+      .insert({
+        workspace_id: existing.workspace_id,
+        display_name: display_name.trim(),
+        slug: slug.trim(),
+        client: client?.trim() || null,
+        billable: billable ?? true,
+        active: true,
+        deleted_at: null,
+      })
+      .select("id,slug,display_name,client,billable,active,created_at")
+      .single() as { data: any | null; error: any };
+
+    if (error) {
+      console.error("[/api/projects POST] Supabase error:", error);
+      const msg = error.code === "23505"
+        ? "A project with that slug already exists"
+        : error.message;
+      return Response.json({ error: msg }, { status: 409 });
+    }
+
+    return Response.json(inserted, { status: 201 });
+  } catch (err) {
+    console.error("[/api/projects POST] Unexpected error:", err);
     return Response.json({ error: "Internal server error" }, { status: 500 });
   }
 }
