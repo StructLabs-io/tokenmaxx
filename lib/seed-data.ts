@@ -32,9 +32,9 @@ export const SEED_USERS: User[] = [
     id: "user-svc",
     created_at: "2025-01-01T00:00:00Z",
     workspace_id: "ws-demo",
-    display_name: "openclaw-server",
+    display_name: "demo-server",
     account_type: "service",
-    capture_name: "openclaw-server",
+    capture_name: "demo-server",
   },
 ];
 
