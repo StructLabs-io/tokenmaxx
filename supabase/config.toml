@@ -1,0 +1,14 @@
+project_id = "ewaknihwrzysakbtjzlx"
+
+[api]
+enabled = true
+port = 54321
+
+[functions.daily-digest]
+verify_jwt = false
+
+[functions.pricing-pull]
+verify_jwt = false
+
+[functions.fx-rate]
+verify_jwt = false
