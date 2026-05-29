@@ -12,10 +12,11 @@
  */
 
 import { isServiceRoleConfigured, getSupabaseServerClient } from "@/lib/supabase/client";
-import type { DashboardStats, DailyTotal, ProjectTotals } from "@/lib/supabase/types";
+import type { DashboardStats, DailyTotal, ProjectTotals, UsageEvent, Project } from "@/lib/supabase/types";
 import {
   SEED_USAGE_EVENTS,
   SEED_PROJECTS,
+  SEED_USERS,
   seedCostByProject,
   seedDailyTotals,
 } from "@/lib/seed-data";
@@ -198,6 +199,211 @@ export async function getProjectsList(days = 30): Promise<{
 }
 
 // ---------------------------------------------------------------------------
+// Usage events (paginated list with optional filters)
+// ---------------------------------------------------------------------------
+
+export interface UsageEventsResult {
+  events: UsageEvent[];
+  total: number;
+  usingSeedData: boolean;
+}
+
+export async function getUsageEvents(opts: {
+  limit?: number;
+  offset?: number;
+  userId?: string;
+  model?: string;
+}): Promise<UsageEventsResult> {
+  const { limit = 50, offset = 0, userId, model } = opts;
+
+  if (!isServiceRoleConfigured()) {
+    let events = [...SEED_USAGE_EVENTS].sort(
+      (a, b) => new Date(b.captured_at).getTime() - new Date(a.captured_at).getTime()
+    );
+    if (userId) events = events.filter((e) => e.user_id === userId);
+    if (model) events = events.filter((e) => e.model === model);
+    return {
+      events: events.slice(offset, offset + limit),
+      total: events.length,
+      usingSeedData: true,
+    };
+  }
+
+  try {
+    const supabase = getSupabaseServerClient();
+    let query = supabase
+      .from("usage_events")
+      .select("*", { count: "exact" })
+      .order("captured_at", { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (userId) query = query.eq("user_id", userId);
+    if (model) query = query.eq("model", model);
+
+    const { data, error, count } = await query as { data: any[] | null; error: any; count: number | null };
+    if (error) {
+      console.error("[data.getUsageEvents] Supabase error:", error);
+      return { events: [], total: 0, usingSeedData: false };
+    }
+
+    return {
+      events: (data ?? []) as UsageEvent[],
+      total: count ?? 0,
+      usingSeedData: false,
+    };
+  } catch (err) {
+    console.error("[data.getUsageEvents] Unexpected error:", err);
+    return { events: [], total: 0, usingSeedData: false };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Project detail (by slug) + usage for that project
+// ---------------------------------------------------------------------------
+
+export interface ProjectDetailResult {
+  project: Project | null;
+  events: UsageEvent[];
+  dailyTotals: DailyTotal[];
+  modelBreakdown: { model: string; tokens: number; cost: number | null }[];
+  totalTokens: number;
+  totalCost: number | null;
+  usingSeedData: boolean;
+}
+
+export async function getProjectDetail(slug: string): Promise<ProjectDetailResult> {
+  if (!isServiceRoleConfigured()) {
+    const project = SEED_PROJECTS.find((p) => p.slug === slug) ?? null;
+    if (!project) return emptyProjectDetail();
+
+    const events = SEED_USAGE_EVENTS.filter((e) => e.project_id === project.id)
+      .sort((a, b) => new Date(b.captured_at).getTime() - new Date(a.captured_at).getTime());
+
+    return buildProjectDetail(project, events, true);
+  }
+
+  try {
+    const supabase = getSupabaseServerClient();
+
+    const { data: projectRow, error: projErr } = await supabase
+      .from("projects")
+      .select("*")
+      .eq("slug", slug)
+      .is("deleted_at", null)
+      .single() as { data: any | null; error: any };
+
+    if (projErr || !projectRow) {
+      return emptyProjectDetail();
+    }
+
+    const { data: events, error: evtErr } = await supabase
+      .from("usage_events")
+      .select("*")
+      .eq("project_id", projectRow.id)
+      .order("captured_at", { ascending: false })
+      .limit(200) as { data: any[] | null; error: any };
+
+    if (evtErr) {
+      console.error("[data.getProjectDetail] Events error:", evtErr);
+      return { ...emptyProjectDetail(), project: projectRow as Project };
+    }
+
+    return buildProjectDetail(projectRow as Project, (events ?? []) as UsageEvent[], false);
+  } catch (err) {
+    console.error("[data.getProjectDetail] Unexpected error:", err);
+    return emptyProjectDetail();
+  }
+}
+
+function buildProjectDetail(
+  project: Project,
+  events: UsageEvent[],
+  usingSeedData: boolean
+): ProjectDetailResult {
+  // Daily totals (group by date_utc)
+  const byDate = new Map<string, { tokens: number; cost: number | null }>();
+  for (const e of events) {
+    const date = e.date_utc;
+    const existing = byDate.get(date) ?? { tokens: 0, cost: null };
+    byDate.set(date, {
+      tokens: existing.tokens + e.total_tokens,
+      cost: e.cost_usd != null ? (existing.cost ?? 0) + e.cost_usd : existing.cost,
+    });
+  }
+  const dailyTotals: DailyTotal[] = Array.from(byDate.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, { tokens, cost }]) => ({ date, tokens, cost }));
+
+  // Model breakdown
+  const byModel = new Map<string, { tokens: number; cost: number | null }>();
+  for (const e of events) {
+    const existing = byModel.get(e.model) ?? { tokens: 0, cost: null };
+    byModel.set(e.model, {
+      tokens: existing.tokens + e.total_tokens,
+      cost: e.cost_usd != null ? (existing.cost ?? 0) + e.cost_usd : existing.cost,
+    });
+  }
+  const modelBreakdown = Array.from(byModel.entries())
+    .map(([model, data]) => ({ model, ...data }))
+    .sort((a, b) => b.tokens - a.tokens);
+
+  const totalTokens = events.reduce((s, e) => s + e.total_tokens, 0);
+  const hasCost = events.some((e) => e.cost_usd != null);
+  const totalCost = hasCost ? events.reduce((s, e) => s + (e.cost_usd ?? 0), 0) : null;
+
+  return { project, events: events.slice(0, 10), dailyTotals, modelBreakdown, totalTokens, totalCost, usingSeedData };
+}
+
+function emptyProjectDetail(): ProjectDetailResult {
+  return {
+    project: null,
+    events: [],
+    dailyTotals: [],
+    modelBreakdown: [],
+    totalTokens: 0,
+    totalCost: null,
+    usingSeedData: false,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Distinct values for filter dropdowns
+// ---------------------------------------------------------------------------
+
+export interface FilterOptions {
+  models: string[];
+  userIds: string[];
+  userNames: Map<string, string>;
+  usingSeedData: boolean;
+}
+
+export async function getFilterOptions(): Promise<FilterOptions> {
+  if (!isServiceRoleConfigured()) {
+    const models = [...new Set(SEED_USAGE_EVENTS.map((e) => e.model))].sort();
+    const userIds = SEED_USERS.map((u) => u.id);
+    const userNames = new Map(SEED_USERS.map((u) => [u.id, u.display_name]));
+    return { models, userIds, userNames, usingSeedData: true };
+  }
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const [eventsRes, usersRes] = await Promise.all([
+      supabase.from("usage_events").select("model").limit(500) as unknown as Promise<{ data: any[] | null }>,
+      supabase.from("users").select("id,display_name").is("deleted_at", null) as unknown as Promise<{ data: any[] | null }>,
+    ]);
+
+    const models = [...new Set((eventsRes.data ?? []).map((e: any) => e.model))].sort() as string[];
+    const users = (usersRes.data ?? []) as { id: string; display_name: string }[];
+    const userIds = users.map((u) => u.id);
+    const userNames = new Map(users.map((u) => [u.id, u.display_name]));
+
+    return { models, userIds, userNames, usingSeedData: false };
+  } catch {
+    return { models: [], userIds: [], userNames: new Map(), usingSeedData: false };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Seed fallbacks (used when Supabase is not configured)
 // ---------------------------------------------------------------------------
 
@@ -206,13 +412,16 @@ function buildSeedStats(days: number): DashboardStats & { usingSeedData: boolean
   const projectCosts = seedCostByProject(SEED_USAGE_EVENTS);
 
   const totalTokens = SEED_USAGE_EVENTS.reduce((s, e) => s + e.total_tokens, 0);
-  const totalCost = SEED_USAGE_EVENTS.reduce((s, e) => s + e.cost_usd, 0);
+  const hasCost = SEED_USAGE_EVENTS.some((e) => e.cost_usd != null);
+  const totalCost = hasCost
+    ? SEED_USAGE_EVENTS.reduce((s, e) => s + (e.cost_usd ?? 0), 0)
+    : null;
 
   const topProjects: ProjectTotals[] = projectCosts.slice(0, 5).map(({ project, totalCost: tc, totalTokens: tt }) => ({
     id: project.id,
     slug: project.slug,
-    display_name: project.name,
-    client: null,
+    display_name: project.display_name,
+    client: project.client,
     totalTokens: tt,
     totalCost: tc,
   }));
@@ -231,14 +440,17 @@ function buildSeedStats(days: number): DashboardStats & { usingSeedData: boolean
 function buildSeedProjectsList() {
   const projectCosts = seedCostByProject(SEED_USAGE_EVENTS);
   const unattributedCount = SEED_USAGE_EVENTS.filter((e) => !e.project_id).length;
-  const totalCost = SEED_USAGE_EVENTS.reduce((s, e) => s + e.cost_usd, 0);
+  const hasCost = SEED_USAGE_EVENTS.some((e) => e.cost_usd != null);
+  const totalCost = hasCost
+    ? SEED_USAGE_EVENTS.reduce((s, e) => s + (e.cost_usd ?? 0), 0)
+    : null;
 
   return {
     projects: projectCosts.map(({ project, totalCost: tc, totalTokens: tt }) => ({
       id: project.id,
       slug: project.slug,
-      display_name: project.name,
-      client: null,
+      display_name: project.display_name,
+      client: project.client,
       totalTokens: tt,
       totalCost: tc,
     })),

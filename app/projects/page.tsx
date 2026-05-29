@@ -1,11 +1,12 @@
 /**
- * /projects -- Project list with cost totals
+ * /projects -- Project list with token + cost totals
  *
- * Data source: seed data until Supabase is wired (v0.2).
+ * Server component: fetches project list from lib/data.ts (getProjectsList).
+ * Falls back to seed data when Supabase is not configured.
  */
 
 import Link from "next/link";
-import { SEED_USAGE_EVENTS, seedCostByProject } from "@/lib/seed-data";
+import { getProjectsList } from "@/lib/data";
 import { formatTokens, formatCost } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -18,12 +19,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-export default function ProjectsPage() {
-  const projectCosts = seedCostByProject(SEED_USAGE_EVENTS);
-  const unattributed = SEED_USAGE_EVENTS.filter((e) => !e.project_id);
-  const unattribCost = unattributed.reduce((s, e) => s + e.cost_usd, 0);
-  const unattribTokens = unattributed.reduce((s, e) => s + e.total_tokens, 0);
-  const totalCost = SEED_USAGE_EVENTS.reduce((s, e) => s + e.cost_usd, 0);
+export const dynamic = "force-dynamic";
+
+export default async function ProjectsPage() {
+  const { projects, totalEvents, totalCost, unattributedCount, usingSeedData } =
+    await getProjectsList(30);
+
+  const totalTokens = projects.reduce((s, p) => s + p.totalTokens, 0);
 
   return (
     <div className="p-6 space-y-6">
@@ -32,11 +34,11 @@ export default function ProjectsPage() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Projects</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            AI cost by project, attributed via Toggl
+            AI usage by project (30-day window)
           </p>
         </div>
-        <Badge variant="secondary" className="text-xs">
-          Seed data mode
+        <Badge variant={usingSeedData ? "secondary" : "outline"} className="text-xs">
+          {usingSeedData ? "Seed data" : `${totalEvents.toLocaleString()} events`}
         </Badge>
       </div>
 
@@ -45,21 +47,24 @@ export default function ProjectsPage() {
         <Card className="gap-2 py-4">
           <CardHeader className="px-4">
             <p className="text-xs text-muted-foreground">Projects tracked</p>
-            <p className="text-2xl font-bold">{projectCosts.length}</p>
+            <p className="text-2xl font-bold">{projects.length}</p>
           </CardHeader>
         </Card>
         <Card className="gap-2 py-4">
           <CardHeader className="px-4">
-            <p className="text-xs text-muted-foreground">Total cost (14d)</p>
+            <p className="text-xs text-muted-foreground">Total cost (30d)</p>
             <p className="text-2xl font-bold tabular-nums">
-              {formatCost(totalCost)}
+              {totalCost != null ? formatCost(totalCost) : "—"}
             </p>
+            {totalCost == null && (
+              <p className="text-xs text-muted-foreground">pending pricing</p>
+            )}
           </CardHeader>
         </Card>
         <Card className="gap-2 py-4">
           <CardHeader className="px-4">
             <p className="text-xs text-muted-foreground">Unattributed events</p>
-            <p className="text-2xl font-bold tabular-nums">{unattributed.length}</p>
+            <p className="text-2xl font-bold tabular-nums">{unattributedCount}</p>
           </CardHeader>
         </Card>
       </div>
@@ -74,48 +79,55 @@ export default function ProjectsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead className="pl-6">Project</TableHead>
-                <TableHead className="text-right">Total cost</TableHead>
                 <TableHead className="text-right">Tokens</TableHead>
-                <TableHead className="text-right">% of spend</TableHead>
+                <TableHead className="text-right">% of tokens</TableHead>
+                <TableHead className="text-right">Cost</TableHead>
                 <TableHead className="pr-6" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {projectCosts.map(({ project, totalCost: pc, totalTokens: pt }) => (
-                <TableRow key={project.id}>
-                  <TableCell className="pl-6">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="h-2.5 w-2.5 rounded-full shrink-0"
-                        style={{ background: project.color ?? "#6366f1" }}
-                      />
-                      <span className="font-medium">{project.name}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {formatCost(pc)}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums text-muted-foreground">
-                    {formatTokens(pt)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {totalCost > 0
-                      ? `${Math.round((pc / totalCost) * 100)}%`
-                      : "--"}
-                  </TableCell>
-                  <TableCell className="pr-6">
-                    <Link
-                      href={`/projects/${project.slug}`}
-                      className="text-xs text-primary hover:underline"
-                    >
-                      Details
-                    </Link>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {projects
+                .sort((a, b) => b.totalTokens - a.totalTokens)
+                .map((project) => (
+                  <TableRow key={project.id}>
+                    <TableCell className="pl-6">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="h-2.5 w-2.5 rounded-full shrink-0"
+                          style={{ background: "#6366f1" }}
+                        />
+                        <span className="font-medium">{project.display_name}</span>
+                        {project.client && (
+                          <span className="text-xs text-muted-foreground">
+                            · {project.client}
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-muted-foreground">
+                      {formatTokens(project.totalTokens)}
+                    </TableCell>
+                    <TableCell className="text-right text-muted-foreground">
+                      {totalTokens > 0
+                        ? `${Math.round((project.totalTokens / totalTokens) * 100)}%`
+                        : "—"}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {project.totalCost != null ? formatCost(project.totalCost) : "—"}
+                    </TableCell>
+                    <TableCell className="pr-6">
+                      <Link
+                        href={`/projects/${project.slug}`}
+                        className="text-xs text-primary hover:underline"
+                      >
+                        Details
+                      </Link>
+                    </TableCell>
+                  </TableRow>
+                ))}
 
               {/* Unattributed row */}
-              {unattributed.length > 0 && (
+              {unattributedCount > 0 && (
                 <TableRow>
                   <TableCell className="pl-6">
                     <div className="flex items-center gap-2">
@@ -126,15 +138,11 @@ export default function ProjectsPage() {
                     </div>
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-muted-foreground">
-                    {formatCost(unattribCost)}
+                    —
                   </TableCell>
+                  <TableCell className="text-right text-muted-foreground">—</TableCell>
                   <TableCell className="text-right tabular-nums text-muted-foreground">
-                    {formatTokens(unattribTokens)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {totalCost > 0
-                      ? `${Math.round((unattribCost / totalCost) * 100)}%`
-                      : "--"}
+                    —
                   </TableCell>
                   <TableCell className="pr-6" />
                 </TableRow>

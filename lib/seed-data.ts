@@ -3,6 +3,8 @@
  * Replace once Supabase is wired -- see lib/supabase/client.ts.
  *
  * All data is generic/fictional. No real user names, projects, or costs.
+ *
+ * Shapes match the real schema types from lib/supabase/types.ts.
  */
 
 import type { UsageEvent, Project, User, QuotaWindow } from "@/lib/supabase/types";
@@ -14,27 +16,36 @@ import type { UsageEvent, Project, User, QuotaWindow } from "@/lib/supabase/type
 export const SEED_USERS: User[] = [
   {
     id: "user-alice",
-    created_at: "2025-01-01T00:00:00Z",
-    workspace_id: "ws-demo",
+    auth_user_id: null,
+    slug: "alice",
     display_name: "Alice",
     account_type: "human",
-    capture_name: "alice-macbook",
+    email: "alice@example.com",
+    default_timezone: "UTC",
+    created_at: "2025-01-01T00:00:00Z",
+    deleted_at: null,
   },
   {
     id: "user-bob",
-    created_at: "2025-01-01T00:00:00Z",
-    workspace_id: "ws-demo",
+    auth_user_id: null,
+    slug: "bob",
     display_name: "Bob",
     account_type: "human",
-    capture_name: "bob-macbook",
+    email: "bob@example.com",
+    default_timezone: "UTC",
+    created_at: "2025-01-01T00:00:00Z",
+    deleted_at: null,
   },
   {
     id: "user-svc",
-    created_at: "2025-01-01T00:00:00Z",
-    workspace_id: "ws-demo",
+    auth_user_id: null,
+    slug: "demo-server",
     display_name: "demo-server",
     account_type: "service",
-    capture_name: "demo-server",
+    email: null,
+    default_timezone: "UTC",
+    created_at: "2025-01-01T00:00:00Z",
+    deleted_at: null,
   },
 ];
 
@@ -45,53 +56,68 @@ export const SEED_USERS: User[] = [
 export const SEED_PROJECTS: Project[] = [
   {
     id: "proj-alpha",
-    created_at: "2025-01-05T00:00:00Z",
     workspace_id: "ws-demo",
-    name: "Project Alpha",
     slug: "alpha",
+    display_name: "Project Alpha",
+    client: null,
     toggl_project_id: 10001,
-    color: "#6366f1",
-    archived: false,
+    billable: true,
+    active: true,
+    notes: null,
+    created_at: "2025-01-05T00:00:00Z",
+    deleted_at: null,
   },
   {
     id: "proj-beta",
-    created_at: "2025-01-10T00:00:00Z",
     workspace_id: "ws-demo",
-    name: "Project Beta",
     slug: "beta",
+    display_name: "Project Beta",
+    client: null,
     toggl_project_id: 10002,
-    color: "#f59e0b",
-    archived: false,
+    billable: true,
+    active: true,
+    notes: null,
+    created_at: "2025-01-10T00:00:00Z",
+    deleted_at: null,
   },
   {
     id: "proj-gamma",
-    created_at: "2025-02-01T00:00:00Z",
     workspace_id: "ws-demo",
-    name: "Project Gamma",
     slug: "gamma",
+    display_name: "Project Gamma",
+    client: null,
     toggl_project_id: 10003,
-    color: "#10b981",
-    archived: false,
+    billable: true,
+    active: true,
+    notes: null,
+    created_at: "2025-02-01T00:00:00Z",
+    deleted_at: null,
   },
   {
     id: "proj-delta",
-    created_at: "2025-02-15T00:00:00Z",
     workspace_id: "ws-demo",
-    name: "Project Delta",
     slug: "delta",
+    display_name: "Project Delta",
+    client: null,
     toggl_project_id: 10004,
-    color: "#ef4444",
-    archived: false,
+    billable: true,
+    active: true,
+    notes: null,
+    created_at: "2025-02-15T00:00:00Z",
+    deleted_at: null,
   },
   {
     id: "proj-epsilon",
-    created_at: "2025-03-01T00:00:00Z",
     workspace_id: "ws-demo",
-    name: "Internal Infra",
     slug: "infra",
+    display_name: "Internal Infra",
+    client: null,
     toggl_project_id: null,
-    color: "#8b5cf6",
-    archived: false,
+    billable: false,
+    active: true,
+    notes: null,
+    created_at: "2025-03-01T00:00:00Z",
+    deleted_at: null,
   },
 ];
 
@@ -107,10 +133,17 @@ const MODELS = [
   "codex-gpt-5-3",
 ];
 
-const TOOLS = ["claude_code", "codex", "browser", "api_direct"];
+const CAPTURE_METHODS = [
+  "anthropic.claude_code.cli.session",
+  "openai.codex.cli.session",
+  "anthropic.api_direct.web.turn",
+  "openai.api_direct.web.turn",
+];
 
 const PROJECT_IDS = SEED_PROJECTS.map((p) => p.id);
 const USER_IDS = SEED_USERS.map((u) => u.id);
+
+let _seedIdCounter = 1;
 
 function makeEvent(
   dayOffset: number,
@@ -122,30 +155,41 @@ function makeEvent(
   date.setHours(8 + (seq % 10));
 
   const model = MODELS[seq % MODELS.length];
-  const tool = TOOLS[seq % TOOLS.length];
+  const captureMethod = CAPTURE_METHODS[seq % CAPTURE_METHODS.length];
   const inputTokens = 1000 + (seq * 137 + dayOffset * 53) % 8000;
   const outputTokens = 200 + (seq * 71 + dayOffset * 29) % 3000;
-  const costUsd = (inputTokens * 0.000003 + outputTokens * 0.000015);
+  const dateStr = date.toISOString().slice(0, 10);
+
+  const id = _seedIdCounter++;
 
   return {
-    id: `evt-${dayOffset}-${seq}`,
-    created_at: date.toISOString(),
-    user_id: USER_IDS[seq % USER_IDS.length],
+    id,
     workspace_id: "ws-demo",
+    user_id: USER_IDS[seq % USER_IDS.length],
+    subscription_id: null,
     project_id: seq % 7 === 0 ? null : PROJECT_IDS[seq % PROJECT_IDS.length],
+    captured_at: date.toISOString(),
+    date_utc: dateStr,
+    date_local: dateStr,
+    provider: model.startsWith("claude") ? "anthropic" : "openai",
     model,
-    provider: model.startsWith("claude") ? "anthropic" : model.startsWith("gpt") ? "openai" : "openai",
-    tool,
-    surface: tool === "claude_code" ? "cli" : tool === "codex" ? "cli" : "web",
+    capture_method: captureMethod,
+    aggregation_grain: "session",
+    session_id: `sess-${dayOffset}-${seq}`,
+    source_path: null,
     input_tokens: inputTokens,
     output_tokens: outputTokens,
+    cache_creation_tokens: 0,
+    cache_read_tokens: 0,
     total_tokens: inputTokens + outputTokens,
-    cost_usd: Math.round(costUsd * 10000) / 10000,
-    capture_method: `${model.startsWith("claude") ? "anthropic" : "openai"}.${tool}.cli.session`,
-    aggregation_grain: "session",
-    session_start: date.toISOString(),
-    session_end: new Date(date.getTime() + (20 + seq % 40) * 60 * 1000).toISOString(),
-    metadata: null,
+    cost_usd: null, // null until pricing_snapshots is populated
+    pricing_snapshot_id: null,
+    token_share_pct: null,
+    project_hint: null,
+    runtime_ms: null,
+    notes: null,
+    ingested_at: date.toISOString(),
+    raw: null,
     ...overrides,
   };
 }
@@ -163,36 +207,48 @@ export const SEED_USAGE_EVENTS: UsageEvent[] = Array.from(
 
 export const SEED_QUOTA_WINDOWS: QuotaWindow[] = [
   {
-    id: "qw-claude-5h",
-    provider: "anthropic",
-    window_type: "rolling_5h",
-    label: "Claude Max -- 5h rolling",
-    cap_tokens: null, // Unknown until scraping ships
+    id: 1,
+    subscription_id: "sub-claude",
+    window_label: "Claude Max -- 5h rolling",
+    window_type: "rolling_hours",
+    window_hours: 5,
+    reset_anchor: null,
+    active: true,
     notes: "Cap unknown -- pending quota scraping integration (v1.0)",
+    created_at: "2025-01-01T00:00:00Z",
   },
   {
-    id: "qw-claude-weekly",
-    provider: "anthropic",
-    window_type: "weekly",
-    label: "Claude Max -- weekly",
-    cap_tokens: null,
+    id: 2,
+    subscription_id: "sub-claude",
+    window_label: "Claude Max -- weekly",
+    window_type: "calendar_week",
+    window_hours: null,
+    reset_anchor: null,
+    active: true,
     notes: "Cap unknown -- pending quota scraping integration (v1.0)",
+    created_at: "2025-01-01T00:00:00Z",
   },
   {
-    id: "qw-codex-5h",
-    provider: "openai",
-    window_type: "rolling_5h",
-    label: "Codex Pro -- 5h rolling",
-    cap_tokens: null,
+    id: 3,
+    subscription_id: "sub-codex",
+    window_label: "Codex Pro -- 5h rolling",
+    window_type: "rolling_hours",
+    window_hours: 5,
+    reset_anchor: null,
+    active: true,
     notes: "Cap unknown -- pending quota scraping integration (v1.0)",
+    created_at: "2025-01-01T00:00:00Z",
   },
   {
-    id: "qw-codex-weekly",
-    provider: "openai",
-    window_type: "weekly",
-    label: "Codex Pro -- weekly",
-    cap_tokens: null,
+    id: 4,
+    subscription_id: "sub-codex",
+    window_label: "Codex Pro -- weekly",
+    window_type: "calendar_week",
+    window_hours: null,
+    reset_anchor: null,
+    active: true,
     notes: "Cap unknown -- pending quota scraping integration (v1.0)",
+    created_at: "2025-01-01T00:00:00Z",
   },
 ];
 
@@ -203,62 +259,68 @@ export const SEED_QUOTA_WINDOWS: QuotaWindow[] = [
 /** Sum tokens for a user/period from seed events */
 export function seedTokensForPeriod(
   events: UsageEvent[],
-  days: number
+  _days: number
 ): number {
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - days);
   // Seed data is fixed to May 2025; return the full set for display purposes
   return events.reduce((sum, e) => sum + e.total_tokens, 0);
 }
 
-/** Sum cost USD from seed events */
+/** Sum cost USD from seed events (null-safe) */
 export function seedCostForPeriod(
   events: UsageEvent[],
   _days: number
-): number {
-  return events.reduce((sum, e) => sum + e.cost_usd, 0);
+): number | null {
+  const hasCost = events.some((e) => e.cost_usd != null);
+  if (!hasCost) return null;
+  return events.reduce((sum, e) => sum + (e.cost_usd ?? 0), 0);
 }
 
 /** Cost per project from seed events */
 export function seedCostByProject(
   events: UsageEvent[]
-): { project: Project; totalCost: number; totalTokens: number }[] {
+): { project: Project; totalCost: number | null; totalTokens: number }[] {
   const byProject = new Map<
     string,
-    { totalCost: number; totalTokens: number }
+    { totalCost: number | null; totalTokens: number }
   >();
 
   for (const e of events) {
     if (!e.project_id) continue;
     const existing = byProject.get(e.project_id) ?? {
-      totalCost: 0,
+      totalCost: null,
       totalTokens: 0,
     };
     byProject.set(e.project_id, {
-      totalCost: existing.totalCost + e.cost_usd,
+      totalCost:
+        e.cost_usd != null
+          ? (existing.totalCost ?? 0) + e.cost_usd
+          : existing.totalCost,
       totalTokens: existing.totalTokens + e.total_tokens,
     });
   }
 
   return SEED_PROJECTS.map((p) => ({
     project: p,
-    totalCost: Math.round((byProject.get(p.id)?.totalCost ?? 0) * 100) / 100,
+    totalCost: byProject.get(p.id)?.totalCost ?? null,
     totalTokens: byProject.get(p.id)?.totalTokens ?? 0,
-  })).sort((a, b) => b.totalCost - a.totalCost);
+  })).sort((a, b) => b.totalTokens - a.totalTokens);
 }
 
 /** Daily token totals for the sparkline chart */
 export function seedDailyTotals(
   events: UsageEvent[]
-): { date: string; tokens: number; cost: number }[] {
-  const byDate = new Map<string, { tokens: number; cost: number }>();
+): { date: string; tokens: number; cost: number | null }[] {
+  const byDate = new Map<string, { tokens: number; cost: number | null }>();
 
   for (const e of events) {
-    const date = e.created_at.slice(0, 10);
-    const existing = byDate.get(date) ?? { tokens: 0, cost: 0 };
+    const date = e.captured_at.slice(0, 10);
+    const existing = byDate.get(date) ?? { tokens: 0, cost: null };
     byDate.set(date, {
       tokens: existing.tokens + e.total_tokens,
-      cost: existing.cost + e.cost_usd,
+      cost:
+        e.cost_usd != null
+          ? (existing.cost ?? 0) + e.cost_usd
+          : existing.cost,
     });
   }
 
@@ -267,7 +329,7 @@ export function seedDailyTotals(
     .map(([date, { tokens, cost }]) => ({
       date,
       tokens,
-      cost: Math.round(cost * 100) / 100,
+      cost: cost != null ? Math.round(cost * 100) / 100 : null,
     }));
 }
 

@@ -1,17 +1,14 @@
 /**
  * /projects/[slug] -- Project detail
  *
- * Shows: tokens + time spent + cost for a specific project.
- * Data source: seed data until Supabase is wired (v0.2).
+ * Server component: fetches project + usage from lib/data.ts (getProjectDetail).
+ * Falls back to seed data when Supabase is not configured.
+ * generateStaticParams uses seed projects to enable static pre-rendering of known slugs.
  */
 
 import { notFound } from "next/navigation";
-import {
-  SEED_PROJECTS,
-  SEED_USAGE_EVENTS,
-  SEED_USERS,
-  seedDailyTotals,
-} from "@/lib/seed-data";
+import { getProjectDetail } from "@/lib/data";
+import { SEED_PROJECTS } from "@/lib/data";
 import { formatTokens, formatCost } from "@/lib/utils";
 import {
   Card,
@@ -30,35 +27,25 @@ export function generateStaticParams() {
   return SEED_PROJECTS.map((p) => ({ slug: p.slug }));
 }
 
+export const dynamic = "force-dynamic";
+
 export default async function ProjectDetailPage({ params }: Props) {
   const { slug } = await params;
-  const project = SEED_PROJECTS.find((p) => p.slug === slug);
+  const {
+    project,
+    events,
+    dailyTotals,
+    modelBreakdown,
+    totalTokens,
+    totalCost,
+    usingSeedData,
+  } = await getProjectDetail(slug);
+
   if (!project) notFound();
 
-  const events = SEED_USAGE_EVENTS.filter((e) => e.project_id === project.id);
-  const dailyTotals = seedDailyTotals(events);
-
-  const totalTokens = events.reduce((s, e) => s + e.total_tokens, 0);
-  const totalCost = events.reduce((s, e) => s + e.cost_usd, 0);
+  const chartData = dailyTotals.map((d) => ({ ...d, cost: d.cost ?? 0 }));
   const totalInputTokens = events.reduce((s, e) => s + e.input_tokens, 0);
   const totalOutputTokens = events.reduce((s, e) => s + e.output_tokens, 0);
-
-  // Per-model breakdown
-  const byModel = new Map<string, { tokens: number; cost: number }>();
-  for (const e of events) {
-    const existing = byModel.get(e.model) ?? { tokens: 0, cost: 0 };
-    byModel.set(e.model, {
-      tokens: existing.tokens + e.total_tokens,
-      cost: existing.cost + e.cost_usd,
-    });
-  }
-  const modelBreakdown = Array.from(byModel.entries())
-    .map(([model, data]) => ({ model, ...data }))
-    .sort((a, b) => b.tokens - a.tokens);
-
-  function displayUser(userId: string): string {
-    return SEED_USERS.find((u) => u.id === userId)?.display_name ?? userId;
-  }
 
   return (
     <div className="p-6 space-y-6">
@@ -66,21 +53,25 @@ export default async function ProjectDetailPage({ params }: Props) {
       <div className="flex items-center gap-3">
         <span
           className="h-4 w-4 rounded-full shrink-0"
-          style={{ background: project.color ?? "#6366f1" }}
+          style={{ background: "#6366f1" }}
         />
         <div>
           <h1 className="text-xl font-semibold tracking-tight">
-            {project.name}
+            {project.display_name}
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             slug: {project.slug}
             {project.toggl_project_id != null
               ? ` · Toggl #${project.toggl_project_id}`
               : " · No Toggl project linked"}
+            {project.client ? ` · ${project.client}` : ""}
           </p>
         </div>
-        <Badge variant="secondary" className="text-xs ml-auto">
-          Seed data mode
+        <Badge
+          variant={usingSeedData ? "secondary" : "outline"}
+          className="text-xs ml-auto"
+        >
+          {usingSeedData ? "Seed data" : `${events.length} recent events`}
         </Badge>
       </div>
 
@@ -98,8 +89,11 @@ export default async function ProjectDetailPage({ params }: Props) {
           <CardHeader className="px-4">
             <p className="text-xs text-muted-foreground">Total cost</p>
             <p className="text-2xl font-bold tabular-nums">
-              {formatCost(totalCost)}
+              {totalCost != null ? formatCost(totalCost) : "—"}
             </p>
+            {totalCost == null && (
+              <p className="text-xs text-muted-foreground">pending pricing</p>
+            )}
           </CardHeader>
         </Card>
         <Card className="gap-2 py-4">
@@ -121,7 +115,7 @@ export default async function ProjectDetailPage({ params }: Props) {
       </div>
 
       {/* Daily timeline */}
-      {dailyTotals.length > 0 && (
+      {chartData.length > 0 && (
         <Card>
           <CardHeader className="px-6">
             <CardTitle className="text-sm font-medium">
@@ -129,7 +123,7 @@ export default async function ProjectDetailPage({ params }: Props) {
             </CardTitle>
           </CardHeader>
           <CardContent className="px-6 pb-2">
-            <UsageLineChart data={dailyTotals} metric="tokens" height={180} />
+            <UsageLineChart data={chartData} metric="tokens" height={180} />
           </CardContent>
         </Card>
       )}
@@ -149,7 +143,7 @@ export default async function ProjectDetailPage({ params }: Props) {
                   </Badge>
                   <div className="text-right">
                     <p className="text-sm font-medium tabular-nums">
-                      {formatCost(cost)}
+                      {cost != null ? formatCost(cost) : "—"}
                     </p>
                     <p className="text-xs text-muted-foreground tabular-nums">
                       {formatTokens(tokens)}
@@ -162,46 +156,53 @@ export default async function ProjectDetailPage({ params }: Props) {
         </Card>
       )}
 
-      {/* Recent events */}
+      {/* Recent events (10 most recent) */}
       <Card>
         <CardHeader className="px-6">
           <CardTitle className="text-sm font-medium">
-            Recent events ({events.length} total)
+            Recent events ({events.length} shown)
           </CardTitle>
         </CardHeader>
         <CardContent className="px-6">
-          <div className="space-y-2">
-            {events.slice(0, 10).map((e) => (
-              <div
-                key={e.id}
-                className="flex items-center justify-between py-1.5 border-b border-border last:border-0"
-              >
-                <div>
-                  <p className="text-sm">
-                    {displayUser(e.user_id)}{" "}
-                    <span className="text-muted-foreground">via</span>{" "}
-                    {e.tool}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {new Date(e.created_at).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </p>
+          {events.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No events yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {events.map((e) => (
+                <div
+                  key={e.id}
+                  className="flex items-center justify-between py-1.5 border-b border-border last:border-0"
+                >
+                  <div>
+                    <p className="text-sm">
+                      <span className="text-muted-foreground">via</span>{" "}
+                      {e.capture_method}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(e.captured_at).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                      {" · "}
+                      <Badge variant="outline" className="text-xs font-mono py-0">
+                        {e.model}
+                      </Badge>
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm tabular-nums">
+                      {e.cost_usd != null ? formatCost(e.cost_usd) : "—"}
+                    </p>
+                    <p className="text-xs text-muted-foreground tabular-nums">
+                      {formatTokens(e.total_tokens)}
+                    </p>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-sm tabular-nums">
-                    {formatCost(e.cost_usd)}
-                  </p>
-                  <p className="text-xs text-muted-foreground tabular-nums">
-                    {formatTokens(e.total_tokens)}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

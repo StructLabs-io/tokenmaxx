@@ -12,8 +12,12 @@ export function formatTokens(n: number): string {
   return n.toString();
 }
 
-/** Format cost in USD */
-export function formatCost(usd: number): string {
+/**
+ * Format cost in USD.
+ * Pass null when cost_usd is null (pricing_snapshots not yet populated).
+ */
+export function formatCost(usd: number | null | undefined): string {
+  if (usd == null) return "—";
   if (usd < 0.01) return "<$0.01";
   return `$${usd.toFixed(2)}`;
 }
