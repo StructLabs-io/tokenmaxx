@@ -749,3 +749,220 @@ export async function getModelBreakdown(days?: number): Promise<ModelBreakdownRo
 
 // Expose seed projects for static param generation
 export { SEED_PROJECTS };
+
+// ---------------------------------------------------------------------------
+// Wrap stats (2026 YTD) — used by /wrap page
+// ---------------------------------------------------------------------------
+
+import type { WrapStats } from "@/app/api/wrap/route";
+
+const WRAP_YEAR = 2026;
+const WRAP_CUTOFF = `${WRAP_YEAR}-01-01`;
+const WRAP_MONTH_LABELS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+export async function getWrapStats(): Promise<WrapStats | null> {
+  if (!isServiceRoleConfigured()) return null;
+
+  try {
+    const supabase = getSupabaseServerClient();
+
+    const { data: events, error, count } = await supabase
+      .from("usage_events")
+      .select("date_utc,provider,model,total_tokens,cost_usd,project_id", { count: "exact" })
+      .gte("date_utc", WRAP_CUTOFF)
+      .order("date_utc", { ascending: true }) as { data: any[] | null; error: any; count: number | null };
+
+    if (error) {
+      console.error("[data.getWrapStats] Supabase error:", error);
+      return null;
+    }
+
+    const rows = events ?? [];
+    const hasCost = rows.some((r) => r.cost_usd != null);
+    let totalTokens = 0;
+    let totalCost: number | null = null;
+
+    const byModel = new Map<string, number>();
+    const byMonth = new Map<string, { tokens: number; cost: number | null }>();
+    const byDay = new Map<string, number>();
+    const byProvider = new Map<string, { tokens: number; cost: number | null }>();
+    const byProject = new Map<string, { tokens: number; cost: number | null }>();
+
+    for (const r of rows) {
+      const tokens: number = r.total_tokens ?? 0;
+      const cost: number | null = r.cost_usd ?? null;
+      totalTokens += tokens;
+      if (hasCost) totalCost = (totalCost ?? 0) + (cost ?? 0);
+
+      byModel.set(r.model, (byModel.get(r.model) ?? 0) + tokens);
+
+      const month = (r.date_utc as string).slice(0, 7);
+      const em = byMonth.get(month) ?? { tokens: 0, cost: null };
+      byMonth.set(month, { tokens: em.tokens + tokens, cost: cost != null ? (em.cost ?? 0) + cost : em.cost });
+
+      byDay.set(r.date_utc, (byDay.get(r.date_utc) ?? 0) + tokens);
+
+      const prov: string = r.provider ?? "other";
+      const ep = byProvider.get(prov) ?? { tokens: 0, cost: null };
+      byProvider.set(prov, { tokens: ep.tokens + tokens, cost: cost != null ? (ep.cost ?? 0) + cost : ep.cost });
+
+      if (r.project_id) {
+        const ej = byProject.get(r.project_id) ?? { tokens: 0, cost: null };
+        byProject.set(r.project_id, { tokens: ej.tokens + tokens, cost: cost != null ? (ej.cost ?? 0) + cost : ej.cost });
+      }
+    }
+
+    let topModel: string | null = null;
+    let topModelTokens = 0;
+    for (const [m, t] of byModel) { if (t > topModelTokens) { topModelTokens = t; topModel = m; } }
+
+    let topMonthKey: string | null = null;
+    let topMonthTokens = 0;
+    for (const [m, v] of byMonth) { if (v.tokens > topMonthTokens) { topMonthTokens = v.tokens; topMonthKey = m; } }
+    const topMonth = topMonthKey ? WRAP_MONTH_LABELS[parseInt(topMonthKey.slice(5, 7), 10) - 1] ?? null : null;
+
+    let peakDay: string | null = null;
+    let peakDayTokens = 0;
+    for (const [d, t] of byDay) { if (t > peakDayTokens) { peakDayTokens = t; peakDay = d; } }
+
+    const sortedProviders = Array.from(byProvider.entries()).sort(([, a], [, b]) => b.tokens - a.tokens);
+    const providerBreakdown = sortedProviders.map(([provider, v]) => ({
+      provider,
+      tokens: v.tokens,
+      cost: v.cost,
+      pct: totalTokens > 0 ? Math.round((v.tokens / totalTokens) * 100) : 0,
+    }));
+
+    const topProjectIds = Array.from(byProject.entries())
+      .sort(([, a], [, b]) => b.tokens - a.tokens)
+      .slice(0, 5)
+      .map(([id]) => id);
+
+    let topProjects: WrapStats["topProjects"] = [];
+    if (topProjectIds.length > 0) {
+      const { data: projectRows } = await supabase
+        .from("projects")
+        .select("id,slug,display_name,client")
+        .in("id", topProjectIds) as { data: any[] | null };
+      topProjects = ((projectRows ?? []) as any[]).map((p) => ({
+        id: p.id,
+        slug: p.slug,
+        display_name: p.display_name,
+        client: p.client,
+        tokens: byProject.get(p.id)?.tokens ?? 0,
+        cost: byProject.get(p.id)?.cost ?? null,
+      })).sort((a, b) => b.tokens - a.tokens);
+    }
+
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const monthlyTotals: WrapStats["monthlyTotals"] = [];
+    for (let m = 1; m <= 12; m++) {
+      const key = `${WRAP_YEAR}-${String(m).padStart(2, "0")}`;
+      if (key > currentMonth) break;
+      const v = byMonth.get(key);
+      monthlyTotals.push({ month: key, label: WRAP_MONTH_LABELS[m - 1], tokens: v?.tokens ?? 0, cost: v?.cost ?? null });
+    }
+
+    return {
+      year: WRAP_YEAR,
+      totalTokens,
+      totalCost: hasCost ? totalCost : null,
+      totalEvents: count ?? rows.length,
+      topModel,
+      topModelTokens,
+      topMonth,
+      topMonthTokens,
+      peakDay,
+      peakDayTokens,
+      providerBreakdown,
+      topProjects,
+      monthlyTotals,
+    };
+  } catch (err) {
+    console.error("[data.getWrapStats] Unexpected error:", err);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Reconcile data — used by /reconcile page
+// ---------------------------------------------------------------------------
+
+import type { UnattributedGroup } from "@/app/api/reconcile/route";
+
+export async function getUnattributedGroups(): Promise<UnattributedGroup[]> {
+  if (!isServiceRoleConfigured()) return [];
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const { data, error } = await supabase
+      .from("usage_events")
+      .select("date_utc,model,capture_method,total_tokens,cost_usd")
+      .is("project_id", null)
+      .order("date_utc", { ascending: false })
+      .limit(500) as { data: any[] | null; error: any };
+
+    if (error) {
+      console.error("[data.getUnattributedGroups] Supabase error:", error);
+      return [];
+    }
+
+    const map = new Map<string, UnattributedGroup>();
+    for (const r of data ?? []) {
+      const key = `${r.date_utc}|${r.model}|${r.capture_method}`;
+      const existing = map.get(key);
+      if (existing) {
+        existing.event_count += 1;
+        existing.total_tokens += r.total_tokens ?? 0;
+        if (r.cost_usd != null) existing.total_cost = (existing.total_cost ?? 0) + r.cost_usd;
+      } else {
+        map.set(key, {
+          date_utc: r.date_utc,
+          model: r.model,
+          capture_method: r.capture_method,
+          event_count: 1,
+          total_tokens: r.total_tokens ?? 0,
+          total_cost: r.cost_usd ?? null,
+        });
+      }
+    }
+
+    return Array.from(map.values())
+      .sort((a, b) => b.date_utc.localeCompare(a.date_utc))
+      .slice(0, 100);
+  } catch (err) {
+    console.error("[data.getUnattributedGroups] Unexpected error:", err);
+    return [];
+  }
+}
+
+export async function getProjectsForSelect(): Promise<ProjectTotals[]> {
+  if (!isServiceRoleConfigured()) return [];
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const { data, error } = await supabase
+      .from("projects")
+      .select("id,slug,display_name,client")
+      .is("deleted_at", null)
+      .order("display_name") as { data: any[] | null; error: any };
+
+    if (error) {
+      console.error("[data.getProjectsForSelect] Supabase error:", error);
+      return [];
+    }
+
+    return ((data ?? []) as any[]).map((p) => ({
+      id: p.id,
+      slug: p.slug,
+      display_name: p.display_name,
+      client: p.client,
+      totalTokens: 0,
+      totalCost: null,
+    }));
+  } catch (err) {
+    console.error("[data.getProjectsForSelect] Unexpected error:", err);
+    return [];
+  }
+}

@@ -11,6 +11,8 @@ import {
   Cpu,
   CreditCard,
   Gauge,
+  Sparkles,
+  GitMerge,
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -50,6 +52,16 @@ const NAV_ITEMS = [
     href: "/quota",
     label: "Quota",
     icon: Gauge,
+  },
+  {
+    href: "/wrap",
+    label: "Wrapped",
+    icon: Sparkles,
+  },
+  {
+    href: "/reconcile",
+    label: "Reconcile",
+    icon: GitMerge,
   },
 ];
 
