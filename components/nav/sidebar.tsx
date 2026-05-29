@@ -8,6 +8,7 @@ import {
   FolderKanban,
   Table2,
   Zap,
+  Cpu,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -31,6 +32,11 @@ const NAV_ITEMS = [
     href: "/raw",
     label: "Raw Events",
     icon: Table2,
+  },
+  {
+    href: "/models",
+    label: "Models",
+    icon: Cpu,
   },
 ];
 

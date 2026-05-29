@@ -12,7 +12,7 @@
  */
 
 import { isServiceRoleConfigured, getSupabaseServerClient } from "@/lib/supabase/client";
-import type { DashboardStats, DailyTotal, ProjectTotals, UsageEvent, Project } from "@/lib/supabase/types";
+import type { DashboardStats, DailyTotal, ProjectTotals, UsageEvent, Project, ModelBreakdownRow } from "@/lib/supabase/types";
 import {
   SEED_USAGE_EVENTS,
   SEED_PROJECTS,
@@ -470,6 +470,93 @@ function emptyStats(days: number): DashboardStats {
     dailyTotals: [],
     topProjects: [],
   };
+}
+
+// ---------------------------------------------------------------------------
+// Model breakdown (for /models page)
+// ---------------------------------------------------------------------------
+
+export async function getModelBreakdown(days?: number): Promise<ModelBreakdownRow[]> {
+  if (!isServiceRoleConfigured()) {
+    const byModel = new Map<string, ModelBreakdownRow>();
+    const cutoff = days
+      ? new Date(Date.now() - days * 86400 * 1000).toISOString().slice(0, 10)
+      : null;
+    for (const e of SEED_USAGE_EVENTS) {
+      if (cutoff && e.date_utc < cutoff) continue;
+      const key = `${e.provider}__${e.model}`;
+      const existing = byModel.get(key) ?? {
+        provider: e.provider,
+        model: e.model,
+        event_count: 0,
+        input_tokens: 0,
+        output_tokens: 0,
+        total_tokens: 0,
+        cost_usd: null,
+      };
+      byModel.set(key, {
+        ...existing,
+        event_count: existing.event_count + 1,
+        input_tokens: existing.input_tokens + e.input_tokens,
+        output_tokens: existing.output_tokens + e.output_tokens,
+        total_tokens: existing.total_tokens + e.total_tokens,
+        cost_usd:
+          e.cost_usd != null
+            ? (existing.cost_usd ?? 0) + e.cost_usd
+            : existing.cost_usd,
+      });
+    }
+    return Array.from(byModel.values()).sort((a, b) => b.total_tokens - a.total_tokens);
+  }
+
+  try {
+    const supabase = getSupabaseServerClient();
+    let query = supabase
+      .from("usage_events")
+      .select("provider,model,input_tokens,output_tokens,total_tokens,cost_usd");
+
+    if (days != null) {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - days);
+      query = query.gte("date_utc", cutoff.toISOString().slice(0, 10));
+    }
+
+    const { data, error } = await query as { data: any[] | null; error: any };
+    if (error || !data) {
+      console.error("[data.getModelBreakdown] Supabase error:", error);
+      return [];
+    }
+
+    const byModel = new Map<string, ModelBreakdownRow>();
+    for (const e of data as any[]) {
+      const key = `${e.provider}__${e.model}`;
+      const existing = byModel.get(key) ?? {
+        provider: e.provider,
+        model: e.model,
+        event_count: 0,
+        input_tokens: 0,
+        output_tokens: 0,
+        total_tokens: 0,
+        cost_usd: null,
+      };
+      byModel.set(key, {
+        ...existing,
+        event_count: existing.event_count + 1,
+        input_tokens: existing.input_tokens + (e.input_tokens ?? 0),
+        output_tokens: existing.output_tokens + (e.output_tokens ?? 0),
+        total_tokens: existing.total_tokens + (e.total_tokens ?? 0),
+        cost_usd:
+          e.cost_usd != null
+            ? (existing.cost_usd ?? 0) + e.cost_usd
+            : existing.cost_usd,
+      });
+    }
+
+    return Array.from(byModel.values()).sort((a, b) => b.total_tokens - a.total_tokens);
+  } catch (err) {
+    console.error("[data.getModelBreakdown] Unexpected error:", err);
+    return [];
+  }
 }
 
 // Expose seed projects for static param generation

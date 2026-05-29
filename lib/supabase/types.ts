@@ -178,6 +178,17 @@ export interface DashboardStats {
   topProjects: ProjectTotals[];
 }
 
+/** Model breakdown row for /models page */
+export interface ModelBreakdownRow {
+  provider: string;
+  model: string;
+  event_count: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  cost_usd: number | null;
+}
+
 /** Paginated events response */
 export interface EventsPage {
   events: UsageEventRow[];

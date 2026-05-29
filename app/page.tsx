@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { WindowCard } from "@/components/quota/window-card";
 import { UsageLineChart } from "@/components/charts/usage-line";
 import type { DailyTotal } from "@/lib/supabase/types";
+import { LiveTicker } from "@/components/realtime/live-ticker";
 
 // quota_observations is empty in v0.1 -- show graceful empty state
 const QUOTA_PLACEHOLDER = [
@@ -55,9 +56,12 @@ export default async function DashboardPage() {
             AI usage overview
           </p>
         </div>
-        <Badge variant={usingSeedData ? "secondary" : "outline"} className="text-xs">
-          {usingSeedData ? "Seed data" : `${totalEvents.toLocaleString()} events`}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <LiveTicker />
+          <Badge variant={usingSeedData ? "secondary" : "outline"} className="text-xs">
+            {usingSeedData ? "Seed data" : `${totalEvents.toLocaleString()} events`}
+          </Badge>
+        </div>
       </div>
 
       {/* Summary cards */}
