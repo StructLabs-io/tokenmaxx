@@ -114,6 +114,23 @@ export interface Database {
         >;
         Update: Partial<Database["public"]["Tables"]["workspaces"]["Insert"]>;
       };
+      subscriptions: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          provider: string;
+          plan_name: string;
+          monthly_cost_usd: number | null;
+          active: boolean;
+          notes: string | null;
+          created_at: string;
+        };
+        Insert: Omit<
+          Database["public"]["Tables"]["subscriptions"]["Row"],
+          "id" | "created_at"
+        >;
+        Update: Partial<Database["public"]["Tables"]["subscriptions"]["Insert"]>;
+      };
       quota_windows: {
         Row: {
           id: number;
@@ -147,6 +164,7 @@ export type UsageEvent = Database["public"]["Tables"]["usage_events"]["Row"];
 export type Project = Database["public"]["Tables"]["projects"]["Row"];
 export type User = Database["public"]["Tables"]["users"]["Row"];
 export type Workspace = Database["public"]["Tables"]["workspaces"]["Row"];
+export type Subscription = Database["public"]["Tables"]["subscriptions"]["Row"];
 export type QuotaWindow = Database["public"]["Tables"]["quota_windows"]["Row"];
 
 // ---- API response shapes (shared between Route Handlers and client pages) ----
@@ -176,6 +194,28 @@ export interface DashboardStats {
   totalCost: number | null;
   dailyTotals: DailyTotal[];
   topProjects: ProjectTotals[];
+}
+
+/** Quota window with live token usage */
+export interface QuotaWindowWithUsage {
+  id: number;
+  subscription_id: string;
+  window_label: string;
+  window_type: "rolling_hours" | "calendar_week" | "calendar_month";
+  window_hours: number | null;
+  tokens_in_window: number;
+  notes: string | null;
+}
+
+/** Subscription with rolled-up 30-day usage and quota window data */
+export interface SubscriptionSummary {
+  id: string;
+  provider: string;
+  plan_name: string;
+  monthly_cost_usd: number | null;
+  tokens_30d: number;
+  cost_30d: number | null;
+  windows: QuotaWindowWithUsage[];
 }
 
 /** Model breakdown row for /models page */

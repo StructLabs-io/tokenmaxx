@@ -9,6 +9,8 @@ import {
   Table2,
   Zap,
   Cpu,
+  CreditCard,
+  Gauge,
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -38,6 +40,16 @@ const NAV_ITEMS = [
     href: "/models",
     label: "Models",
     icon: Cpu,
+  },
+  {
+    href: "/subscriptions",
+    label: "Subscriptions",
+    icon: CreditCard,
+  },
+  {
+    href: "/quota",
+    label: "Quota",
+    icon: Gauge,
   },
 ];
 

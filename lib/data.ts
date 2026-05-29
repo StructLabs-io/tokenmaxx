@@ -12,7 +12,7 @@
  */
 
 import { isServiceRoleConfigured, getSupabaseServerClient } from "@/lib/supabase/client";
-import type { DashboardStats, DailyTotal, ProjectTotals, UsageEvent, Project, ModelBreakdownRow } from "@/lib/supabase/types";
+import type { DashboardStats, DailyTotal, ProjectTotals, UsageEvent, Project, ModelBreakdownRow, SubscriptionSummary, QuotaWindowWithUsage } from "@/lib/supabase/types";
 import {
   SEED_USAGE_EVENTS,
   SEED_PROJECTS,
@@ -470,6 +470,194 @@ function emptyStats(days: number): DashboardStats {
     dailyTotals: [],
     topProjects: [],
   };
+}
+
+// ---------------------------------------------------------------------------
+// Subscriptions summary (for /subscriptions page)
+// ---------------------------------------------------------------------------
+
+/**
+ * Computes the window start timestamp given window_type and window_hours.
+ * rolling_hours: now - window_hours
+ * calendar_week: start of the current ISO week (Monday 00:00 UTC)
+ * calendar_month: start of the current calendar month (1st 00:00 UTC)
+ */
+function windowStart(windowType: string, windowHours: number | null): string {
+  const now = new Date();
+  if (windowType === "rolling_hours" && windowHours != null) {
+    return new Date(now.getTime() - windowHours * 60 * 60 * 1000).toISOString();
+  }
+  if (windowType === "calendar_week") {
+    // Monday = day 1; JS: 0=Sun
+    const day = now.getUTCDay();
+    const diff = (day === 0 ? 6 : day - 1); // days since Monday
+    const monday = new Date(now);
+    monday.setUTCDate(now.getUTCDate() - diff);
+    monday.setUTCHours(0, 0, 0, 0);
+    return monday.toISOString();
+  }
+  if (windowType === "calendar_month") {
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+  }
+  // Fallback: 24h
+  return new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+}
+
+export async function getSubscriptionsSummary(): Promise<{
+  subscriptions: SubscriptionSummary[];
+  usingSeedData: boolean;
+}> {
+  if (!isServiceRoleConfigured()) {
+    return { subscriptions: [], usingSeedData: false };
+  }
+
+  try {
+    const supabase = getSupabaseServerClient();
+
+    // 1. Load all active subscriptions
+    const { data: subs, error: subErr } = await supabase
+      .from("subscriptions")
+      .select("*")
+      .eq("active", true)
+      .order("created_at") as { data: any[] | null; error: any };
+
+    if (subErr || !subs || subs.length === 0) {
+      if (subErr) console.error("[data.getSubscriptionsSummary] subs error:", subErr);
+      return { subscriptions: [], usingSeedData: false };
+    }
+
+    // 2. Load all quota_windows for these subscriptions
+    const subIds = subs.map((s) => s.id);
+    const { data: windows, error: winErr } = await supabase
+      .from("quota_windows")
+      .select("*")
+      .in("subscription_id", subIds)
+      .eq("active", true) as { data: any[] | null; error: any };
+
+    if (winErr) {
+      console.error("[data.getSubscriptionsSummary] windows error:", winErr);
+    }
+    const allWindows = (windows ?? []) as any[];
+
+    // 3. Load 30-day usage events for all providers in one shot
+    const cutoff30 = new Date();
+    cutoff30.setDate(cutoff30.getDate() - 30);
+    const cutoffDate30 = cutoff30.toISOString().slice(0, 10);
+
+    const providers = [...new Set(subs.map((s) => s.provider))];
+    const { data: events30, error: evtErr } = await supabase
+      .from("usage_events")
+      .select("provider,total_tokens,cost_usd,captured_at")
+      .in("provider", providers)
+      .gte("date_utc", cutoffDate30) as { data: any[] | null; error: any };
+
+    if (evtErr) {
+      console.error("[data.getSubscriptionsSummary] events error:", evtErr);
+    }
+    const allEvents = (events30 ?? []) as any[];
+
+    // 4. Compute per-provider 30d totals
+    const by30 = new Map<string, { tokens: number; cost: number | null }>();
+    for (const e of allEvents) {
+      const existing = by30.get(e.provider) ?? { tokens: 0, cost: null };
+      by30.set(e.provider, {
+        tokens: existing.tokens + (e.total_tokens ?? 0),
+        cost: e.cost_usd != null ? (existing.cost ?? 0) + e.cost_usd : existing.cost,
+      });
+    }
+
+    // 5. For each window, compute tokens_in_window from the already-fetched events
+    //    (we re-filter by captured_at >= windowStart in JS to avoid N+1 queries)
+    const windowResults: QuotaWindowWithUsage[] = allWindows.map((w: any) => {
+      const start = windowStart(w.window_type, w.window_hours);
+      let tokens = 0;
+      for (const e of allEvents) {
+        if (e.provider === subs.find((s: any) => s.id === w.subscription_id)?.provider) {
+          if (e.captured_at >= start) {
+            tokens += e.total_tokens ?? 0;
+          }
+        }
+      }
+      return {
+        id: w.id,
+        subscription_id: w.subscription_id,
+        window_label: w.window_label,
+        window_type: w.window_type,
+        window_hours: w.window_hours,
+        tokens_in_window: tokens,
+        notes: w.notes,
+      };
+    });
+
+    // 6. Assemble
+    const subscriptions: SubscriptionSummary[] = subs.map((s: any) => ({
+      id: s.id,
+      provider: s.provider,
+      plan_name: s.plan_name,
+      monthly_cost_usd: s.monthly_cost_usd,
+      tokens_30d: by30.get(s.provider)?.tokens ?? 0,
+      cost_30d: by30.get(s.provider)?.cost ?? null,
+      windows: windowResults.filter((w) => w.subscription_id === s.id),
+    }));
+
+    return { subscriptions, usingSeedData: false };
+  } catch (err) {
+    console.error("[data.getSubscriptionsSummary] Unexpected error:", err);
+    return { subscriptions: [], usingSeedData: false };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Quota windows (for /quota page) — all windows across all subscriptions
+// ---------------------------------------------------------------------------
+
+export interface QuotaWindowDetail extends QuotaWindowWithUsage {
+  provider: string;
+  plan_name: string;
+  monthly_cost_usd: number | null;
+  /** ms remaining until window resets (for rolling_hours windows); null otherwise */
+  ms_until_reset: number | null;
+}
+
+export async function getQuotaWindowDetails(): Promise<{
+  windows: QuotaWindowDetail[];
+  usingSeedData: boolean;
+}> {
+  if (!isServiceRoleConfigured()) {
+    return { windows: [], usingSeedData: false };
+  }
+
+  try {
+    const { subscriptions, usingSeedData } = await getSubscriptionsSummary();
+    if (!subscriptions.length) return { windows: [], usingSeedData };
+
+    const now = Date.now();
+
+    const windows: QuotaWindowDetail[] = subscriptions.flatMap((sub) =>
+      sub.windows.map((w) => {
+        let ms_until_reset: number | null = null;
+        if (w.window_type === "rolling_hours" && w.window_hours != null) {
+          // Rolling window resets when oldest event in window falls out.
+          // Since we don't have event-level granularity here, approximate:
+          // window opened (now - window_hours); next full reset = now + window_hours
+          // This is a "maximum time" approximation shown as "up to Xh remaining"
+          ms_until_reset = w.window_hours * 60 * 60 * 1000;
+        }
+        return {
+          ...w,
+          provider: sub.provider,
+          plan_name: sub.plan_name,
+          monthly_cost_usd: sub.monthly_cost_usd,
+          ms_until_reset,
+        };
+      })
+    );
+
+    return { windows, usingSeedData };
+  } catch (err) {
+    console.error("[data.getQuotaWindowDetails] Unexpected error:", err);
+    return { windows: [], usingSeedData: false };
+  }
 }
 
 // ---------------------------------------------------------------------------
