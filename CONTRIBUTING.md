@@ -1,14 +1,14 @@
 # Contributing
 
 **Version:** v0.1
-**Status:** Draft — pending Ben's review
+**Status:** Approved (v0.1)
 **Last updated:** 2026-05-29
 
 ## Changelog
 
 | Version | Date | Author | Changes |
 |---|---|---|---|
-| v0.1 | 2026-05-29 | An AI agent | Initial contributing guide stub |
+| v0.1 | 2026-05-29 | Human Approved | Initial contributing guide stub |
 
 ---
 

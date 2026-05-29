@@ -8,6 +8,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [0.1.0] — 2026-05-29
 
+Approved by Human, 2026-05-29.
+
 Initial public scaffold for Tokenmaxx v0.1 MVP.
 
 ### Added
