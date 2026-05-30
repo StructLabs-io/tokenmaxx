@@ -2,11 +2,55 @@
 /**
  * quota-codex.js -- OpenAI Codex Pro quota -> Supabase quota_observations
  *
- * Reads cookies from Brave browser profile for platform.openai.com, then
- * attempts to discover and query the platform usage/limits endpoint.
+ * Fetches the "X% of monthly compute used" figure from chatgpt.com and writes
+ * it to Supabase quota_observations for the Codex Pro quota windows.
  *
- * Non-fatal: if no authenticated session or no endpoint found, exits 0
- * with a clear log message. Suitable for cron.
+ * Target page:  https://chatgpt.com/codex/cloud/settings/analytics#usage
+ * Auth domain:  chatgpt.com
+ * Session key:  __Secure-next-auth.session-token (same cookie name used on
+ *               chatgpt.com — different from platform.openai.com)
+ *
+ * Uses cycletls to spoof Chrome JA3/JA4 TLS fingerprint, bypassing Cloudflare
+ * bot detection (same technique as quota-tier2.js for claude.ai).
+ *
+ * ──────────────────────────────────────────────────────────────────────────────
+ * ENDPOINT INVESTIGATION STATUS (2026-05-30)
+ * ──────────────────────────────────────────────────────────────────────────────
+ * Browser DevTools on chatgpt.com/codex/cloud/settings/analytics#usage found:
+ *
+ *   CONFIRMED (return daily task counts, NOT quota %):
+ *     GET /backend-api/wham/analytics/daily-code-review-metrics
+ *     GET /backend-api/wham/analytics/daily-skill-usage-metrics
+ *     GET /backend-api/wham/analytics/daily-plugin-usage-metrics
+ *     GET /backend-api/wham/analytics/daily-workspace-usage-counts
+ *
+ *   HYPOTHESIS (most likely source for "X% monthly compute"):
+ *     GET /backend-api/wham/usage            <-- primary candidate
+ *     GET /backend-api/wham/quota            <-- secondary candidate
+ *     GET /backend-api/wham/compute          <-- tertiary candidate
+ *     GET /backend-api/wham/subscription     <-- may include compute limits
+ *     GET /backend-api/accounts/me           <-- may include compute_remaining
+ *     GET /backend-api/subscription          <-- may include compute_quota
+ *
+ * The script probes all candidates in order, logs the response shape, and
+ * calls extractCodexQuota() to parse the known shapes. If the response shape
+ * is unknown, the raw JSON is printed so you can update extractCodexQuota().
+ *
+ * ──────────────────────────────────────────────────────────────────────────────
+ * FIRST-RUN SETUP
+ * ──────────────────────────────────────────────────────────────────────────────
+ * 1. Log into chatgpt.com in Brave
+ * 2. Set CHATGPT_SESSION_TOKEN in shared/.env (see §Getting your session token)
+ * 3. Run: node scripts/quota-codex.js --dry-run
+ * 4. Look at the "-> OK, keys:" log lines to identify the right endpoint
+ * 5. If extractCodexQuota() returns percentUsed=null, update it (see below)
+ *
+ * §Getting your session token
+ *   Open chatgpt.com in Brave -> DevTools -> Application -> Cookies ->
+ *   Copy the value of __Secure-next-auth.session-token
+ *   Set it as CHATGPT_SESSION_TOKEN in shared/.env
+ *
+ * Non-fatal: exits 0 if no session or no matching endpoint found. Cron-safe.
  *
  * Usage:
  *   node quota-codex.js
@@ -15,15 +59,25 @@
  * Environment:
  *   SUPABASE_URL                  Required
  *   SUPABASE_SERVICE_ROLE_KEY     Required
- *   BRAVE_PROFILE_PATH            Optional — override default Brave profile path
- *   OPENAI_SESSION_TOKEN          Optional — manual override (skip Brave read)
+ *   CHATGPT_SESSION_TOKEN         Required — __Secure-next-auth.session-token
+ *                                  from chatgpt.com. Do NOT use Brave cookie
+ *                                  reading (better-sqlite3 Node version conflict).
+ *   OPENAI_SESSION_TOKEN          Alias for CHATGPT_SESSION_TOKEN (legacy compat)
  *
  * See scripts/CRON_SETUP.md for cron setup instructions.
  */
 
 'use strict';
 
-const { getBraveCookies } = require('./brave-cookies.js');
+const initCycleTLS = require('cycletls');
+
+// Chrome 124 JA3 fingerprint — same as quota-tier2.js (bypasses Cloudflare)
+const CHROME_JA3 =
+  '772,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,' +
+  '0-23-65281-10-11-35-16-5-13-18-51-45-43-27-17513,29-23-24,0';
+const CHROME_UA =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
+  '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -31,36 +85,56 @@ const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 // Minimum interval between observations for the same window (minutes)
 const MIN_INTERVAL_MINUTES = 10;
 
-// OpenAI endpoints to probe (in order)
+// chatgpt.com endpoints to probe (in priority order)
+// Primary hypothesis: /wham/usage returns compute utilization %
 const CANDIDATE_ENDPOINTS = [
   {
-    url: 'https://platform.openai.com/backend-api/usage',
-    description: 'usage endpoint',
+    url: 'https://chatgpt.com/backend-api/wham/usage',
+    description: 'wham/usage (primary hypothesis)',
   },
   {
-    url: 'https://platform.openai.com/backend-api/me',
-    description: 'user/me endpoint',
+    url: 'https://chatgpt.com/backend-api/wham/quota',
+    description: 'wham/quota',
   },
   {
-    url: 'https://platform.openai.com/backend-api/dashboard/onboarding/billing_info',
-    description: 'billing info endpoint',
+    url: 'https://chatgpt.com/backend-api/wham/compute',
+    description: 'wham/compute',
   },
   {
-    url: 'https://platform.openai.com/backend-api/billing/subscription',
-    description: 'billing subscription endpoint',
+    url: 'https://chatgpt.com/backend-api/wham/subscription',
+    description: 'wham/subscription',
   },
   {
-    url: 'https://platform.openai.com/backend-api/usage_dashboard/operator/cumulative_costs',
-    description: 'cumulative costs endpoint',
+    url: 'https://chatgpt.com/backend-api/wham',
+    description: 'wham root',
+  },
+  {
+    url: 'https://chatgpt.com/backend-api/accounts/me',
+    description: 'accounts/me (may include compute_remaining)',
+  },
+  {
+    url: 'https://chatgpt.com/backend-api/subscription',
+    description: 'subscription (may include compute quota)',
   },
 ];
 
-// Supabase window IDs for Codex quota windows
-// window_id=3 → Codex 5h rolling
-// window_id=4 → Codex weekly
-const CODEX_WINDOW_TYPE_5H = 'rolling_hours';
-const CODEX_WINDOW_HOURS_5H = 5;
-const CODEX_WINDOW_TYPE_WEEKLY = 'calendar_week';
+// Supabase window labels for Codex quota windows (must match quota_windows rows)
+// window_label: 'Codex Pro — 5h rolling'  -> window_type: rolling_hours, window_hours: 5
+// window_label: 'Codex Pro — weekly'       -> window_type: calendar_week
+const CODEX_WINDOW_DEFS = [
+  {
+    windowType: 'rolling_hours',
+    windowHours: 5,
+    windowLabel: 'Codex Pro — 5h rolling',
+    description: 'Codex Pro 5h rolling',
+  },
+  {
+    windowType: 'calendar_week',
+    windowHours: null,
+    windowLabel: 'Codex Pro — weekly',
+    description: 'Codex Pro weekly',
+  },
+];
 
 // --- Supabase REST helper ---
 
@@ -86,20 +160,16 @@ async function supabaseRequest(urlPath, method = 'GET', body = null, extraHeader
 // --- Look up quota_window_id ---
 
 async function getQuotaWindowId(windowType, windowHours, windowLabel) {
-  let filter;
+  let filter = `window_type=eq.${encodeURIComponent(windowType)}&active=eq.true`;
   if (windowHours != null) {
-    filter = `window_type=eq.${encodeURIComponent(windowType)}&window_hours=eq.${windowHours}&active=eq.true`;
-  } else {
-    filter = `window_type=eq.${encodeURIComponent(windowType)}&active=eq.true`;
+    filter += `&window_hours=eq.${windowHours}`;
   }
   if (windowLabel) {
     filter += `&window_label=eq.${encodeURIComponent(windowLabel)}`;
   }
   filter += '&limit=1';
   const rows = await supabaseRequest(`quota_windows?select=id,window_label&${filter}`);
-  if (!rows || rows.length === 0) {
-    return null; // Non-fatal — Codex windows may not be configured yet
-  }
+  if (!rows || rows.length === 0) return null;
   return rows[0];
 }
 
@@ -107,108 +177,100 @@ async function getQuotaWindowId(windowType, windowHours, windowLabel) {
 
 async function getLastObservationAge(windowId) {
   const rows = await supabaseRequest(
-    `quota_observations?select=observed_at&quota_window_id=eq.${windowId}&source=eq.tier2%3Acodex-api&order=observed_at.desc&limit=1`
+    `quota_observations?select=observed_at&quota_window_id=eq.${windowId}` +
+    `&source=eq.tier2%3Acodex-api&order=observed_at.desc&limit=1`
   );
   if (!rows || rows.length === 0) return Infinity;
   const lastMs = new Date(rows[0].observed_at).getTime();
   return (Date.now() - lastMs) / 60000;
 }
 
-// --- Resolve OpenAI cookies ---
+// --- Resolve chatgpt.com session cookie ---
 
 /**
- * Get the best available cookie string for platform.openai.com.
- * @returns {Promise<{cookieString: string, source: string} | null>}
+ * Returns { cookieString, source } or null.
+ * IMPORTANT: Do NOT use brave-cookies.js here — better-sqlite3 has a Node
+ * version mismatch. Use the CHATGPT_SESSION_TOKEN / OPENAI_SESSION_TOKEN env var.
  */
-async function resolveOpenAICookies() {
-  const manualToken = process.env.OPENAI_SESSION_TOKEN;
-  if (manualToken) {
-    return {
-      cookieString: `__Secure-next-auth.session-token=${manualToken}`,
-      source: 'env',
-    };
-  }
-
-  let cookies;
-  try {
-    // Try both the main domain and platform subdomain
-    cookies = await getBraveCookies('openai.com', [
-      '__Secure-next-auth.session-token',
-      'cf_clearance',
-      'oai-did',
-      'oai-nav-state',
-      'oai-sc',
-      'oai-allow-ne2',
-      '__Host-next-auth.csrf-token',
-    ]);
-  } catch (err) {
-    console.warn(`quota-codex: could not read Brave cookies: ${err.message}`);
+function resolveSessionCookie() {
+  // Prefer CHATGPT_SESSION_TOKEN; fall back to OPENAI_SESSION_TOKEN for legacy compat
+  const token = process.env.CHATGPT_SESSION_TOKEN || process.env.OPENAI_SESSION_TOKEN;
+  if (!token) {
+    console.log(
+      'quota-codex: no session token found.\n' +
+      'Set CHATGPT_SESSION_TOKEN in shared/.env:\n' +
+      '  1. Open chatgpt.com in Brave\n' +
+      '  2. DevTools -> Application -> Cookies -> chatgpt.com\n' +
+      '  3. Copy __Secure-next-auth.session-token value\n' +
+      '  4. Add to shared/.env: CHATGPT_SESSION_TOKEN=<value>'
+    );
     return null;
   }
-
-  // Check if we have any meaningful session cookie
-  const sessionToken = cookies['__Secure-next-auth.session-token'];
-  if (!sessionToken) {
-    console.log('quota-codex: no OpenAI session token found in Brave profile');
-    console.log('quota-codex: available cookies:', Object.keys(cookies).filter(k => cookies[k]).join(', ') || 'none');
-    return null;
-  }
-
-  const parts = [];
-  for (const [key, value] of Object.entries(cookies)) {
-    if (value) parts.push(`${key}=${value}`);
-  }
-
-  const found = Object.entries(cookies).filter(([, v]) => v).map(([k]) => k);
-  console.log(`quota-codex: found OpenAI cookies from Brave: ${found.join(', ')}`);
-
-  return { cookieString: parts.join('; '), source: 'brave' };
+  return {
+    cookieString: `__Secure-next-auth.session-token=${token}`,
+    source: 'env',
+  };
 }
 
-// --- Probe OpenAI endpoints ---
+// --- Probe chatgpt.com endpoints ---
 
 /**
  * Try each candidate endpoint and return the first successful JSON response.
- * @param {string} cookieString
- * @returns {Promise<{url: string, data: object} | null>}
+ * Uses cycletls for Cloudflare TLS bypass.
  */
-async function probeOpenAIEndpoints(cookieString) {
+async function probeEndpoints(cookieString, cycleTLS) {
   const headers = {
-    'Cookie': cookieString,
-    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    'Accept': 'application/json, text/plain, */*',
+    Cookie: cookieString,
+    Accept: 'application/json, text/plain, */*',
     'Accept-Language': 'en-US,en;q=0.9',
-    'Referer': 'https://platform.openai.com/',
+    Referer: 'https://chatgpt.com/codex/cloud/settings/analytics',
+    'oai-language': 'en-US',
   };
 
   for (const endpoint of CANDIDATE_ENDPOINTS) {
     console.log(`quota-codex: probing ${endpoint.description} (${endpoint.url})`);
     try {
-      const res = await fetch(endpoint.url, { method: 'GET', headers });
-      const contentType = res.headers.get('content-type') || '';
+      const resp = await cycleTLS(
+        endpoint.url,
+        { headers, ja3: CHROME_JA3, userAgent: CHROME_UA },
+        'get'
+      );
 
-      if (res.status === 401 || res.status === 403) {
-        console.log(`quota-codex:   -> ${res.status} auth required`);
+      if (resp.status === 401 || resp.status === 403) {
+        console.log(`quota-codex:   -> ${resp.status} auth — session may be expired`);
         continue;
       }
-      if (res.status === 404) {
+      if (resp.status === 404) {
         console.log(`quota-codex:   -> 404 not found`);
         continue;
       }
-      if (!res.ok) {
-        console.log(`quota-codex:   -> ${res.status} error`);
-        continue;
-      }
-      if (!contentType.includes('application/json')) {
-        console.log(`quota-codex:   -> non-JSON response (${contentType}) — likely HTML/CF block`);
+      if (resp.status < 200 || resp.status >= 300) {
+        console.log(`quota-codex:   -> ${resp.status} error`);
         continue;
       }
 
-      const data = await res.json();
-      console.log(`quota-codex:   -> OK, keys: ${Object.keys(data).slice(0, 8).join(', ')}`);
+      // CycleTLS returns body as a string
+      const bodyText = typeof resp.body === 'string' ? resp.body : JSON.stringify(resp.body);
+      if (!bodyText || bodyText.trim() === '' || bodyText.trim().startsWith('<')) {
+        console.log(`quota-codex:   -> non-JSON response (HTML or empty)`);
+        continue;
+      }
+
+      let data;
+      try {
+        data = JSON.parse(bodyText);
+      } catch {
+        console.log(`quota-codex:   -> body not valid JSON`);
+        continue;
+      }
+
+      console.log(
+        `quota-codex:   -> OK (${resp.status}), top-level keys: ` +
+        `${Object.keys(data).slice(0, 10).join(', ')}`
+      );
       return { url: endpoint.url, data };
     } catch (err) {
-      console.log(`quota-codex:   -> fetch error: ${err.message}`);
+      console.log(`quota-codex:   -> request error: ${err.message}`);
     }
   }
 
@@ -216,37 +278,96 @@ async function probeOpenAIEndpoints(cookieString) {
 }
 
 /**
- * Try to extract quota percentage from various OpenAI response shapes.
- * Returns null if the shape is unknown — log the raw for manual inspection.
- * @param {object} data
- * @returns {{ percentUsed: number|null, percentRemaining: number|null, raw: object }}
+ * Try to extract compute utilization % from various chatgpt.com response shapes.
+ *
+ * Known shapes to check:
+ *   { compute_utilization_pct: N }
+ *   { utilization: N }
+ *   { compute: { utilization: N, used: N, limit: N } }
+ *   { quota: { used: N, limit: N } }
+ *   { remaining_compute: N, total_compute: N }
+ *   { compute_used: N, compute_limit: N }
+ *
+ * Returns percentUsed (0-100) or null if shape unknown.
+ * When null, raw JSON is logged so the shape can be identified and added here.
  */
 function extractCodexQuota(data) {
-  // Shape: { codex_limit: N, codex_used: N, ... }
-  if (typeof data.codex_limit === 'number' && typeof data.codex_used === 'number') {
-    const pct = Math.round((data.codex_used / data.codex_limit) * 100);
-    return { percentUsed: pct, percentRemaining: 100 - pct, raw: data };
+  // Shape: { compute_utilization_pct: N }
+  if (typeof data.compute_utilization_pct === 'number') {
+    return {
+      percentUsed: Math.round(data.compute_utilization_pct),
+      percentRemaining: Math.round(100 - data.compute_utilization_pct),
+      raw: data,
+    };
   }
 
-  // Shape: { rate_limit: { codex: { remaining: N, limit: N } } }
-  if (data.rate_limit?.codex) {
-    const rl = data.rate_limit.codex;
-    if (typeof rl.limit === 'number' && typeof rl.remaining === 'number') {
-      const pct = Math.round(((rl.limit - rl.remaining) / rl.limit) * 100);
-      return { percentUsed: pct, percentRemaining: 100 - pct, raw: data };
-    }
+  // Shape: { utilization: N }  (matches claude.ai /usage shape)
+  if (typeof data.utilization === 'number') {
+    return {
+      percentUsed: Math.round(data.utilization),
+      percentRemaining: Math.round(100 - data.utilization),
+      raw: data,
+    };
   }
 
-  // Shape: { usage: { codex: { ... } } }
-  if (data.usage?.codex) {
-    const u = data.usage.codex;
-    if (typeof u.total === 'number' && typeof u.used === 'number') {
-      const pct = Math.round((u.used / u.total) * 100);
-      return { percentUsed: pct, percentRemaining: 100 - pct, raw: data };
-    }
+  // Shape: { compute: { utilization: N, ... } }
+  if (typeof data.compute?.utilization === 'number') {
+    const pct = data.compute.utilization;
+    return { percentUsed: Math.round(pct), percentRemaining: Math.round(100 - pct), raw: data };
   }
 
-  // Unknown shape — return raw for logging
+  // Shape: { compute: { used: N, limit: N } }
+  if (typeof data.compute?.used === 'number' && typeof data.compute?.limit === 'number') {
+    const pct = (data.compute.used / data.compute.limit) * 100;
+    return {
+      percentUsed: Math.round(pct),
+      percentRemaining: Math.round(100 - pct),
+      raw: data,
+    };
+  }
+
+  // Shape: { remaining_compute: N, total_compute: N }
+  if (typeof data.remaining_compute === 'number' && typeof data.total_compute === 'number') {
+    const used = data.total_compute - data.remaining_compute;
+    const pct = (used / data.total_compute) * 100;
+    return {
+      percentUsed: Math.round(pct),
+      percentRemaining: Math.round(100 - pct),
+      raw: data,
+    };
+  }
+
+  // Shape: { compute_used: N, compute_limit: N }
+  if (typeof data.compute_used === 'number' && typeof data.compute_limit === 'number') {
+    const pct = (data.compute_used / data.compute_limit) * 100;
+    return {
+      percentUsed: Math.round(pct),
+      percentRemaining: Math.round(100 - pct),
+      raw: data,
+    };
+  }
+
+  // Shape: { quota: { used: N, limit: N } }
+  if (typeof data.quota?.used === 'number' && typeof data.quota?.limit === 'number') {
+    const pct = (data.quota.used / data.quota.limit) * 100;
+    return {
+      percentUsed: Math.round(pct),
+      percentRemaining: Math.round(100 - pct),
+      raw: data,
+    };
+  }
+
+  // Shape: { wham_quota: { used: N, limit: N } }  or  { monthly: { ... } }
+  if (typeof data.wham_quota?.used === 'number' && typeof data.wham_quota?.limit === 'number') {
+    const pct = (data.wham_quota.used / data.wham_quota.limit) * 100;
+    return {
+      percentUsed: Math.round(pct),
+      percentRemaining: Math.round(100 - pct),
+      raw: data,
+    };
+  }
+
+  // Unknown shape
   return { percentUsed: null, percentRemaining: null, raw: data };
 }
 
@@ -259,10 +380,11 @@ async function main() {
     console.log(`
 quota-codex.js -- OpenAI Codex Pro quota -> Supabase quota_observations
 
-Reads cookies from Brave browser profile for openai.com, probes known
-platform.openai.com endpoints for usage/quota data, and writes to Supabase.
+Fetches the monthly compute utilization % from chatgpt.com and records it
+to Supabase. Probes multiple /backend-api/wham/* endpoints to find the one
+that returns "X% of monthly compute used".
 
-Non-fatal: exits 0 if no authenticated session or no endpoint found.
+Non-fatal: exits 0 if no session or no endpoint found. Safe for cron.
 
 Usage:
   node quota-codex.js
@@ -275,16 +397,16 @@ Options:
 Required environment:
   SUPABASE_URL              Supabase project URL
   SUPABASE_SERVICE_ROLE_KEY Supabase service role key
+  CHATGPT_SESSION_TOKEN     __Secure-next-auth.session-token from chatgpt.com
+                            (copy from Brave DevTools -> Application -> Cookies)
 
 Optional environment:
-  BRAVE_PROFILE_PATH        Override default Brave cookie DB path
-  OPENAI_SESSION_TOKEN      Manual __Secure-next-auth.session-token override
+  OPENAI_SESSION_TOKEN      Alias for CHATGPT_SESSION_TOKEN (legacy compat)
 `);
     process.exit(0);
   }
 
   const dryRun = args.includes('--dry-run');
-
   console.log(`quota-codex: starting${dryRun ? ' [DRY RUN]' : ''}`);
 
   if (!SUPABASE_URL || !SUPABASE_KEY) {
@@ -292,21 +414,34 @@ Optional environment:
     process.exit(1);
   }
 
-  // Resolve OpenAI cookies
-  const cookieInfo = await resolveOpenAICookies();
+  // Resolve session cookie
+  const cookieInfo = resolveSessionCookie();
   if (!cookieInfo) {
-    console.log('quota-codex: no OpenAI session available — endpoint not yet discovered');
-    console.log('quota-codex: to set up, log into platform.openai.com in Brave and re-run');
+    // resolveSessionCookie() already logged the instructions
     process.exit(0);
   }
+  console.log(`quota-codex: using session from ${cookieInfo.source}`);
 
-  console.log(`quota-codex: using cookies from ${cookieInfo.source}`);
+  // Init CycleTLS (Chrome TLS fingerprint spoof — bypasses Cloudflare)
+  const cycleTLS = await initCycleTLS();
 
   // Probe endpoints
-  const result = await probeOpenAIEndpoints(cookieInfo.cookieString);
+  let result;
+  try {
+    result = await probeEndpoints(cookieInfo.cookieString, cycleTLS);
+  } finally {
+    await cycleTLS.exit();
+  }
+
   if (!result) {
-    console.log('quota-codex: endpoint not yet discovered — no working endpoint found');
-    console.log('quota-codex: this is non-fatal; check platform.openai.com manually to find the endpoint');
+    console.log(
+      'quota-codex: no working endpoint found.\n' +
+      'This is non-fatal. To debug:\n' +
+      '  1. Open chatgpt.com/codex/cloud/settings/analytics#usage in Brave\n' +
+      '  2. DevTools -> Network tab -> filter by "wham" or "quota"\n' +
+      '  3. Find the XHR that returns compute utilization %\n' +
+      '  4. Add its path to CANDIDATE_ENDPOINTS in this script'
+    );
     process.exit(0);
   }
 
@@ -315,46 +450,37 @@ Optional environment:
   // Extract quota
   const quota = extractCodexQuota(result.data);
   if (quota.percentUsed === null) {
-    console.log('quota-codex: response shape not yet mapped — raw data:');
-    console.log(JSON.stringify(result.data, null, 2).slice(0, 1000));
-    console.log('quota-codex: update extractCodexQuota() in this script to handle this shape');
+    console.log(
+      'quota-codex: response shape not yet mapped. Raw data (first 2000 chars):\n' +
+      JSON.stringify(result.data, null, 2).slice(0, 2000) + '\n\n' +
+      'To fix: add the matching shape to extractCodexQuota() in this script,\n' +
+      'then re-run.'
+    );
     process.exit(0);
   }
 
-  console.log(`quota-codex: ${quota.percentUsed}% used`);
+  console.log(`quota-codex: ${quota.percentUsed}% used (${quota.percentRemaining}% remaining)`);
 
   const observedAt = new Date().toISOString();
 
-  // Write to both Codex quota windows if configured
-  const windowDefs = [
-    {
-      windowType: CODEX_WINDOW_TYPE_5H,
-      windowHours: CODEX_WINDOW_HOURS_5H,
-      windowLabel: 'Codex 5h',
-      description: 'Codex 5h rolling',
-    },
-    {
-      windowType: CODEX_WINDOW_TYPE_WEEKLY,
-      windowHours: null,
-      windowLabel: 'Codex weekly',
-      description: 'Codex weekly',
-    },
-  ];
-
+  // Write to both Codex quota windows
   let wroteSomething = false;
 
-  for (const def of windowDefs) {
+  for (const def of CODEX_WINDOW_DEFS) {
     let windowRow;
     try {
       windowRow = await getQuotaWindowId(def.windowType, def.windowHours, def.windowLabel);
     } catch (err) {
-      console.warn(`quota-codex: skipping ${def.description} — ${err.message}`);
+      console.warn(`quota-codex: skipping ${def.description} — lookup error: ${err.message}`);
       continue;
     }
 
     if (!windowRow) {
-      console.log(`quota-codex: no quota_window configured for "${def.description}" — skipping`);
-      console.log(`quota-codex: add a row to quota_windows with type=${def.windowType}, label=${def.windowLabel} to enable`);
+      console.log(
+        `quota-codex: no quota_window configured for "${def.windowLabel}" — skipping\n` +
+        `quota-codex: add a row to quota_windows: type=${def.windowType}, ` +
+        `label="${def.windowLabel}" to enable`
+      );
       continue;
     }
 
@@ -363,7 +489,8 @@ Optional environment:
       const minutesAgo = await getLastObservationAge(windowRow.id);
       if (minutesAgo < MIN_INTERVAL_MINUTES) {
         console.log(
-          `quota-codex: "${windowRow.window_label}" last observed ${minutesAgo.toFixed(1)} min ago — skipping`
+          `quota-codex: "${windowRow.window_label}" last observed ` +
+          `${minutesAgo.toFixed(1)} min ago — skipping (min interval: ${MIN_INTERVAL_MINUTES} min)`
         );
         continue;
       }
@@ -385,17 +512,26 @@ Optional environment:
     };
 
     if (dryRun) {
-      console.log(`[dry-run] would insert for "${windowRow.window_label}":`, JSON.stringify(observation, null, 2));
+      console.log(
+        `[dry-run] would insert for "${windowRow.window_label}":\n` +
+        JSON.stringify(observation, null, 2)
+      );
     } else {
-      await supabaseRequest('quota_observations', 'POST', observation, { Prefer: 'return=minimal' });
+      await supabaseRequest('quota_observations', 'POST', observation, {
+        Prefer: 'return=minimal',
+      });
       console.log(`quota-codex: inserted observation for "${windowRow.window_label}"`);
     }
     wroteSomething = true;
   }
 
   if (!wroteSomething && !dryRun) {
-    console.log('quota-codex: no Codex quota windows found in Supabase — nothing written');
-    console.log('quota-codex: add Codex windows to quota_windows table to enable tracking');
+    console.log(
+      'quota-codex: no Codex quota windows found in Supabase — nothing written.\n' +
+      'Add Codex windows to quota_windows table:\n' +
+      '  label="Codex Pro — 5h rolling", type=rolling_hours, window_hours=5\n' +
+      '  label="Codex Pro — weekly",     type=calendar_week'
+    );
   }
 
   console.log('\nquota-codex: done');
