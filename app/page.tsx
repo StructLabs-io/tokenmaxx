@@ -5,7 +5,7 @@
  * Falls back to seed data automatically when SUPABASE_SERVICE_ROLE_KEY is not set.
  */
 
-import { getDashboardStats } from "@/lib/data";
+import { getDashboardStats, getQuotaWindowDetails } from "@/lib/data";
 import { formatTokens, formatCost } from "@/lib/utils";
 import {
   Card,
@@ -20,18 +20,14 @@ import { UsageLineChart } from "@/components/charts/usage-line";
 import type { DailyTotal } from "@/lib/supabase/types";
 import { LiveTicker } from "@/components/realtime/live-ticker";
 
-// quota_observations is empty in v0.1 -- show graceful empty state
-const QUOTA_PLACEHOLDER = [
-  { id: "claude-5h", label: "Claude Max — 5h rolling", provider: "anthropic", fillPct: null },
-  { id: "claude-weekly", label: "Claude Max — weekly", provider: "anthropic", fillPct: null },
-  { id: "codex-5h", label: "Codex Pro — 5h rolling", provider: "openai", fillPct: null },
-  { id: "codex-weekly", label: "Codex Pro — weekly", provider: "openai", fillPct: null },
-];
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const stats = await getDashboardStats(14);
+  const [stats, { windows: quotaWindows }] = await Promise.all([
+    getDashboardStats(14),
+    getQuotaWindowDetails(),
+  ]);
 
   const { dailyTotals, topProjects, totalTokens, totalCost, totalEvents, usingSeedData } = stats;
 
@@ -170,29 +166,31 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Quota windows — empty state until quota_observations is populated */}
-        <div className="space-y-3">
-          <h2 className="text-sm font-medium px-0.5">Quota windows</h2>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {QUOTA_PLACEHOLDER.map((qw) => (
-              <WindowCard
-                key={qw.id}
-                window={{
-                  id: qw.id as unknown as number,
-                  subscription_id: "",
-                  window_label: qw.label,
-                  window_type: "rolling_hours",
-                  window_hours: null,
-                  reset_anchor: null,
-                  active: true,
-                  notes: "Cap data pending — quota scraping not yet active (v1.0)",
-                  created_at: new Date().toISOString(),
-                }}
-                fillPct={null}
-              />
-            ))}
+        {/* Quota windows — live from quota_observations */}
+        {quotaWindows.length > 0 && (
+          <div className="space-y-3">
+            <h2 className="text-sm font-medium px-0.5">Quota windows</h2>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {quotaWindows.map((qw) => (
+                <WindowCard
+                  key={qw.id}
+                  window={{
+                    id: qw.id,
+                    subscription_id: qw.subscription_id,
+                    window_label: qw.window_label,
+                    window_type: qw.window_type,
+                    window_hours: qw.window_hours,
+                    reset_anchor: null,
+                    active: true,
+                    notes: qw.notes,
+                    created_at: new Date(0).toISOString(),
+                  }}
+                  fillPct={qw.fillPct ?? null}
+                />
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
