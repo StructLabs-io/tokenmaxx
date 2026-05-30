@@ -5,11 +5,9 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/** Format a number of tokens with K/M suffix */
+/** Format a number of tokens with comma separators */
 export function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return n.toString();
+  return n.toLocaleString("en-US");
 }
 
 /**
@@ -19,7 +17,7 @@ export function formatTokens(n: number): string {
 export function formatCost(usd: number | null | undefined): string {
   if (usd == null) return "—";
   if (usd < 0.01) return "<$0.01";
-  return `$${usd.toFixed(2)}`;
+  return `$${usd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 /** ISO date string → "May 28" */
