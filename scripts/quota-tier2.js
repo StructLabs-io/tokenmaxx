@@ -8,6 +8,11 @@
  * This accesses only the user's own account data via their own session.
  * Run responsibly — minimum 15-minute interval enforced by this script.
  *
+ * NOTE: As of 2026-05-30, Cloudflare bot protection on claude.ai blocks all
+ * non-browser HTTP clients (Node.js, curl). Tier 2 requires a valid cf_clearance
+ * cookie from a real browser session, or use Playwright (Tier 3). Use quota-tier1.js
+ * (Code Meter widget file) for Mac-local quota capture instead.
+ *
  * Usage:
  *   node quota-tier2.js
  *   node quota-tier2.js --dry-run
@@ -27,6 +32,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const CLAUDE_ORG_ID = process.env.CLAUDE_ORG_ID;
 const CLAUDE_SESSION_KEY = process.env.CLAUDE_SESSION_KEY;
+const CLAUDE_DEVICE_ID = process.env.CLAUDE_DEVICE_ID || '';
 
 // Minimum interval between observations for the same window (minutes)
 const MIN_INTERVAL_MINUTES = 10;
@@ -79,15 +85,16 @@ async function getLastObservationAge(windowId) {
 // --- Fetch claude.ai usage report ---
 
 async function fetchClaudeUsage(orgId, sessionKey) {
-  const url = `https://claude.ai/api/organizations/${encodeURIComponent(orgId)}/usage_report/claude_code`;
+  const url = `https://claude.ai/api/organizations/${encodeURIComponent(orgId)}/usage`;
   const res = await fetch(url, {
     method: 'GET',
     headers: {
-      'Cookie': `sessionKey=${sessionKey}`,
+      'Cookie': `sessionKey=${sessionKey}${CLAUDE_DEVICE_ID ? `; anthropic-device-id=${CLAUDE_DEVICE_ID}` : ''}`,
       'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
       'Accept': 'application/json, text/plain, */*',
       'Accept-Language': 'en-US,en;q=0.9',
       'Referer': 'https://claude.ai/',
+      'anthropic-client-platform': 'web_claude_ai',
     },
   });
 
@@ -118,42 +125,23 @@ async function fetchClaudeUsage(orgId, sessionKey) {
 // --- Parse usage report ---
 
 /**
- * Extract quota fields from the claude.ai usage_report response.
- * The exact schema may change — we extract defensively.
+ * Extract quota fields from the claude.ai /usage response.
  *
- * Known response shape (as of 2026-05):
+ * Confirmed response shape (2026-05-30):
  * {
- *   "usage": {
- *     "tokens_used": 123456,
- *     "tokens_limit": 500000,
- *     "percent_used": 24.69,
- *     "window_type": "rolling_5h",   // or similar
- *     "reset_at": "2026-05-30T12:00:00Z"
- *   }
+ *   "five_hour":    { "utilization": 2,  "resets_at": "2026-05-30T05:40:00Z" },
+ *   "seven_day":    { "utilization": 12, "resets_at": "2026-06-05T07:00:00Z" },
+ *   "seven_day_sonnet": { ... },   // per-model breakdowns, may be null
+ *   ...
  * }
- *
- * The response structure is undocumented. We try multiple paths.
+ * utilization is an integer 0-100 (percent used).
  */
-function extractQuotaFields(data) {
-  // Try top-level or nested under "usage"
-  const u = data?.usage || data || {};
-
-  const percentUsed =
-    typeof u.percent_used === 'number' ? u.percent_used :
-    (u.tokens_limit && u.tokens_used)
-      ? Math.round((u.tokens_used / u.tokens_limit) * 10000) / 100
-      : null;
-
-  const percentRemaining =
-    percentUsed != null ? Math.round((100 - percentUsed) * 100) / 100 : null;
-
+function extractWindowFields(windowData) {
+  if (!windowData) return { percentUsed: null, percentRemaining: null };
+  const pct = typeof windowData.utilization === 'number' ? windowData.utilization : null;
   return {
-    percentUsed,
-    percentRemaining,
-    absoluteTokensUsed: typeof u.tokens_used === 'number' ? u.tokens_used : null,
-    absoluteTokensCap: typeof u.tokens_limit === 'number' ? u.tokens_limit : null,
-    costUsedUsd: typeof u.cost_used_usd === 'number' ? u.cost_used_usd : null,
-    costCapUsd: typeof u.cost_cap_usd === 'number' ? u.cost_cap_usd : null,
+    percentUsed: pct,
+    percentRemaining: pct != null ? 100 - pct : null,
   };
 }
 
@@ -211,28 +199,7 @@ How to get CLAUDE_SESSION_KEY:
 
   console.log(`quota-tier2: fetching claude.ai usage for org ${CLAUDE_ORG_ID}${dryRun ? ' [DRY RUN]' : ''}`);
 
-  // Look up the 5h rolling window
-  let windowRow;
-  try {
-    windowRow = await getQuotaWindowId('rolling_hours', 5);
-  } catch (err) {
-    console.error(`quota-tier2: ${err.message}`);
-    process.exit(1);
-  }
-
-  // Rate-limit guard
-  if (!dryRun) {
-    const minutesAgo = await getLastObservationAge(windowRow.id);
-    if (minutesAgo < MIN_INTERVAL_MINUTES) {
-      console.log(
-        `quota-tier2: last tier2 observation was ${minutesAgo.toFixed(1)} min ago ` +
-        `(< ${MIN_INTERVAL_MINUTES} min minimum) — skipping`
-      );
-      process.exit(0);
-    }
-  }
-
-  // Fetch from claude.ai
+  // Fetch from claude.ai first (single API call covers all windows)
   let rawData;
   try {
     rawData = await fetchClaudeUsage(CLAUDE_ORG_ID, CLAUDE_SESSION_KEY);
@@ -243,43 +210,61 @@ How to get CLAUDE_SESSION_KEY:
 
   console.log('quota-tier2: raw response keys:', Object.keys(rawData).join(', '));
 
-  const fields = extractQuotaFields(rawData);
+  // Windows to record: 5h rolling + 7-day calendar
+  const windowDefs = [
+    { windowType: 'rolling_hours', windowHours: 5,  responseKey: 'five_hour' },
+    { windowType: 'calendar_week', windowHours: null, responseKey: 'seven_day' },
+  ];
 
-  if (fields.percentUsed == null && fields.absoluteTokensUsed == null) {
-    console.warn(
-      'quota-tier2: could not extract percent_used or absolute_tokens_used from response. ' +
-      'API response structure may have changed. Raw:', JSON.stringify(rawData).slice(0, 300)
+  for (const def of windowDefs) {
+    let windowRow;
+    try {
+      windowRow = await getQuotaWindowId(def.windowType, def.windowHours);
+    } catch (err) {
+      console.warn(`quota-tier2: skipping ${def.windowType} — ${err.message}`);
+      continue;
+    }
+
+    // Rate-limit guard per window
+    if (!dryRun) {
+      const minutesAgo = await getLastObservationAge(windowRow.id);
+      if (minutesAgo < MIN_INTERVAL_MINUTES) {
+        console.log(
+          `quota-tier2: "${windowRow.window_label}" last observed ${minutesAgo.toFixed(1)} min ago — skipping`
+        );
+        continue;
+      }
+    }
+
+    const windowData = rawData[def.responseKey];
+    const fields = extractWindowFields(windowData);
+
+    console.log(
+      `quota-tier2: window "${windowRow.window_label}" (id=${windowRow.id}) — ` +
+      `${fields.percentUsed ?? '?'}% used, resets ${windowData?.resets_at ?? 'unknown'}`
     );
-    // Still insert with null fields so we have a record of the raw response
-  }
 
-  console.log(
-    `quota-tier2: window "${windowRow.window_label}" (id=${windowRow.id}) — ` +
-    `${fields.percentUsed ?? '?'}% used, ${fields.absoluteTokensUsed ?? '?'} tokens`
-  );
+    const observation = {
+      quota_window_id: windowRow.id,
+      observed_at: observedAt,
+      percent_used: fields.percentUsed,
+      percent_remaining: fields.percentRemaining,
+      absolute_tokens_used: null,
+      absolute_tokens_cap: null,
+      cost_used_usd: null,
+      cost_cap_usd: null,
+      source: 'tier2:claude-api',
+      observation_method: 'http-session-cookie',
+      source_url: `https://claude.ai/api/organizations/${CLAUDE_ORG_ID}/usage`,
+      raw: windowData ?? null,
+    };
 
-  const observation = {
-    quota_window_id: windowRow.id,
-    observed_at: observedAt,
-    percent_used: fields.percentUsed,
-    percent_remaining: fields.percentRemaining,
-    absolute_tokens_used: fields.absoluteTokensUsed,
-    absolute_tokens_cap: fields.absoluteTokensCap,
-    cost_used_usd: fields.costUsedUsd,
-    cost_cap_usd: fields.costCapUsd,
-    source: 'tier2:claude-api',
-    observation_method: 'http-session-cookie',
-    source_url: `https://claude.ai/api/organizations/${CLAUDE_ORG_ID}/usage_report/claude_code`,
-    raw: rawData,
-  };
-
-  if (dryRun) {
-    console.log('[dry-run] would insert:', JSON.stringify(observation, null, 2));
-  } else {
-    await supabaseRequest('quota_observations', 'POST', observation, {
-      Prefer: 'return=minimal',
-    });
-    console.log('quota-tier2: inserted quota_observation');
+    if (dryRun) {
+      console.log('[dry-run] would insert:', JSON.stringify(observation, null, 2));
+    } else {
+      await supabaseRequest('quota_observations', 'POST', observation, { Prefer: 'return=minimal' });
+      console.log(`quota-tier2: inserted observation for "${windowRow.window_label}"`);
+    }
   }
 
   console.log('\nquota-tier2: done');
