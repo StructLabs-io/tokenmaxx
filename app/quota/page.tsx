@@ -133,7 +133,7 @@ export default async function QuotaPage() {
                     {/* WindowCard handles the progress bar / cap display */}
                     <WindowCard
                       window={toWindowCardProp(detail)}
-                      fillPct={null}
+                      fillPct={detail.fillPct ?? null}
                     />
 
                     {/* Supplementary info below the card */}

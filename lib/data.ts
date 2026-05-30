@@ -617,6 +617,8 @@ export interface QuotaWindowDetail extends QuotaWindowWithUsage {
   monthly_cost_usd: number | null;
   /** ms remaining until window resets (for rolling_hours windows); null otherwise */
   ms_until_reset: number | null;
+  /** Latest percent_used from quota_observations (0-100); null if no observations yet */
+  fillPct: number | null;
 }
 
 export async function getQuotaWindowDetails(): Promise<{
@@ -637,10 +639,6 @@ export async function getQuotaWindowDetails(): Promise<{
       sub.windows.map((w) => {
         let ms_until_reset: number | null = null;
         if (w.window_type === "rolling_hours" && w.window_hours != null) {
-          // Rolling window resets when oldest event in window falls out.
-          // Since we don't have event-level granularity here, approximate:
-          // window opened (now - window_hours); next full reset = now + window_hours
-          // This is a "maximum time" approximation shown as "up to Xh remaining"
           ms_until_reset = w.window_hours * 60 * 60 * 1000;
         }
         return {
@@ -649,9 +647,35 @@ export async function getQuotaWindowDetails(): Promise<{
           plan_name: sub.plan_name,
           monthly_cost_usd: sub.monthly_cost_usd,
           ms_until_reset,
+          fillPct: null,
         };
       })
     );
+
+    // Attach latest percent_used from quota_observations
+    if (windows.length > 0) {
+      const supabase = getSupabaseServerClient();
+      const windowIds = windows.map((w) => w.id);
+      const { data: observations } = await supabase
+        .from("quota_observations")
+        .select("quota_window_id, percent_used, observed_at")
+        .in("quota_window_id", windowIds)
+        .order("observed_at", { ascending: false }) as { data: { quota_window_id: number; percent_used: number | null; observed_at: string }[] | null };
+
+      if (observations && observations.length > 0) {
+        const latestByWindow = new Map<number, number | null>();
+        for (const obs of observations) {
+          if (!latestByWindow.has(obs.quota_window_id)) {
+            latestByWindow.set(obs.quota_window_id, obs.percent_used);
+          }
+        }
+        for (const w of windows) {
+          if (latestByWindow.has(w.id)) {
+            w.fillPct = latestByWindow.get(w.id) ?? null;
+          }
+        }
+      }
+    }
 
     return { windows, usingSeedData };
   } catch (err) {
