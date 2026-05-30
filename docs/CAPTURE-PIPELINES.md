@@ -1,13 +1,14 @@
 # Capture Pipelines
 
-**Version:** v0.1
-**Status:** Approved (v0.1)
-**Last updated:** 2026-05-29
+**Version:** v1.0
+**Status:** Approved (v1.0)
+**Last updated:** 2026-05-30
 
 ## Changelog
 
 | Version | Date | Author | Changes |
 |---|---|---|---|
+| v1.0 | 2026-05-30 | Human Approved | Updated quota capture section to reflect shipped scripts |
 | v0.1 | 2026-05-29 | Human Approved | Initial public capture pipelines overview |
 
 ---
@@ -91,13 +92,20 @@ These run automatically once pg_cron is configured. No action required after ini
 
 ---
 
-## 5. Quota capture (v1.0)
+## 5. Quota capture
 
 Anthropic and OpenAI do not publish quota cap numbers for Claude Max / Codex Pro subscriptions. The only source for "X% used" data is your subscription dashboard.
 
-At v1.0, Tokenmaxx provides a script (`scripts/quota-fetch.js`) that calls the internal API your subscription dashboard uses — the same approach used by popular desktop quota-tracking apps. It requires a session cookie from your authenticated browser session (you supply this once; no password is stored).
+Tokenmaxx ships two quota capture scripts for Claude:
 
-At v0.1 (MVP), you can enter quota observations manually via SQL, or use the widget-data.json file written by compatible desktop quota apps if you run one.
+- **`scripts/brave-cookies.js`** — reads your Brave browser's on-disk SQLite cookie database directly (no browser open required) and decrypts the session cookie using the key stored in macOS Keychain. This is the credential source for the tier-2 script.
+- **`scripts/quota-tier2.js`** — calls claude.ai's internal usage API using the session cookies obtained by `brave-cookies.js`, plus cycletls TLS spoofing to bypass Cloudflare's bot detection. On each run it writes a new row to `quota_observations` with the current `percent_used` per quota window. Run this via cron every 15 minutes for live data.
+
+The `/quota` dashboard page reads the latest `percent_used` value per window from `quota_observations` and displays it as a progress bar alongside the historical window data.
+
+A companion script `scripts/quota-tier1.js` scrapes quota % from browser-injected page data as a lighter-weight alternative, but tier-2 is the recommended approach for automated capture.
+
+**Codex quota capture** (`scripts/quota-codex.js`) is in progress — the relevant Codex analytics endpoints have been identified and the script framework is in place.
 
 ---
 

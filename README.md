@@ -10,7 +10,7 @@ Track what your AI subscriptions actually cost — by project, by model, by day.
 
 Tokenmaxx captures token usage from Claude Code and Codex CLI, stores it in your own Supabase database, and gives you a dashboard that breaks down AI spend by project, model, and day. Your data stays in your own Supabase project — no SaaS account required.
 
-**Status: early WIP.** The dashboard scaffold runs on seed data. Supabase wiring and capture scripts are the next step.
+**Status: v1.0, live.** The dashboard is deployed at [tokenmaxx.structlabs.io](https://tokenmaxx.structlabs.io) with Supabase auth, live usage data, subscription tracking, and automated quota capture via Brave browser session cookies.
 
 ---
 

@@ -181,7 +181,7 @@ to check alert thresholds and fire Telegram notifications.
 ```bash
 # Evaluate rules for quota_window_id=1 (Claude Max 5h rolling) at current percent
 curl -s -X POST \
-  "https://ewaknihwrzysakbtjzlx.supabase.co/functions/v1/evaluate-quota-rules" \
+  "https://<YOUR_SUPABASE_PROJECT_REF>.supabase.co/functions/v1/evaluate-quota-rules" \
   -H "Content-Type: application/json" \
   -d '{"quota_window_id": 1, "percent_used": <PERCENT>}'
 ```

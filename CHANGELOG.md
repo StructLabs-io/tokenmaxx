@@ -6,6 +6,47 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.0.0] — 2026-05-30
+
+Approved by Human, 2026-05-30.
+
+Auth, subscriptions, quota capture, users, project management UI, reconciliation, and year-in-review.
+
+### Added
+
+**v0.2 — Auth**
+- Supabase Auth middleware with email sign-in / sign-out
+- Server-side Supabase client using service-role key
+- `/auth/login`, `/auth/logout`, `/auth/callback` routes
+
+**v0.3 — Subscriptions + Quota**
+- `/subscriptions` page — lists AI subscriptions with 30-day token/cost totals
+- `/quota` page — quota windows (5h rolling, 7-day calendar) with progress bars and live `fillPct` from `quota_observations`
+- `quota_windows` and `quota_observations` Supabase tables
+- `scripts/quota-tier1.js` — scrapes quota % from browser-injected page data
+- `scripts/quota-tier2.js` — calls claude.ai internal usage API using Brave browser session cookies + cycletls TLS spoofing to bypass Cloudflare; writes observations to `quota_observations`
+- `scripts/brave-cookies.js` — reads cookies directly from Brave browser's on-disk SQLite DB (no browser must be open); uses macOS Keychain for decryption key
+- `supabase/functions/evaluate-quota-rules/` — Edge Function that fires Telegram alerts at configurable thresholds (e.g. 80% of 5h window)
+
+**v0.4 / v0.5 — Users + Project Management**
+- `/users` page — team member usage breakdown with 30-day totals
+- `/projects` add + edit UI — create and edit projects without SQL
+- Per-model breakdown on project detail pages
+
+**v1.0 — Wrap, Reconcile, live quota data**
+- `/wrap` — year-in-review summary page
+- `/reconcile` — attribution UI for resolving unattributed events (click-to-assign)
+- Quota page reads live `fillPct` from `quota_observations` (latest `percent_used` per window via Supabase query)
+- Token and cost values formatted with comma separators throughout the dashboard
+- `scripts/quota-codex.js` — framework for Codex quota capture (Codex analytics endpoints identified; capture in progress)
+
+### Changed
+
+- Dashboard deployed to tokenmaxx.structlabs.io (Cloudflare Workers via `@opennextjs/cloudflare`)
+- Dashboard pages now connect to live Supabase data; seed data no longer required for normal operation
+
+---
+
 ## [0.1.0] — 2026-05-29
 
 Approved by Human, 2026-05-29.

@@ -1,13 +1,14 @@
 # Architecture
 
-**Version:** v0.1
-**Status:** Approved (v0.1)
-**Last updated:** 2026-05-29
+**Version:** v1.0
+**Status:** Approved (v1.0)
+**Last updated:** 2026-05-30
 
 ## Changelog
 
 | Version | Date | Author | Changes |
 |---|---|---|---|
+| v1.0 | 2026-05-30 | Human Approved | Updated diagram, pages list, security note, adapter reference |
 | v0.1 | 2026-05-29 | Human Approved | Initial public architecture overview |
 
 ---
@@ -15,18 +16,21 @@
 ## System overview
 
 ```
-Your machine(s)           Supabase (your project)          Cloudflare Pages
-──────────────────        ────────────────────────         ─────────────────
-local-capture.js  ──────► usage_events                     Next.js dashboard
-server-capture.js ──────► toggl_entries                    ├── / (overview)
-                          projects                          ├── /usage
-                          quota_observations ◄──────────── ├── /projects
-                          pricing_snapshots                 └── /raw
-                          fx_rates
-                               │
-                               │ Telegram Bot API
-                               ▼
-                          Your Telegram (daily digest)
+Your machine(s)                  Supabase (your project)        Cloudflare Workers
+───────────────────────────      ─────────────────────────      ──────────────────────
+local-capture.js        ───────► usage_events                   Next.js dashboard
+server-capture.js       ───────► toggl_entries                  ├── / (overview)
+                                 projects                        ├── /usage
+brave-cookies.js ─┐              quota_windows                  ├── /projects
+                  ├──────────►   quota_observations             ├── /subscriptions
+quota-tier2.js ───┘              pricing_snapshots              ├── /quota
+                                 fx_rates                        ├── /users
+                                 subscriptions                   ├── /reconcile
+                                      │                          ├── /wrap
+                                      │ Telegram Bot API         └── /raw
+                                      ▼
+                                 Your Telegram
+                                 (quota alerts + daily digest)
 ```
 
 ---
@@ -59,15 +63,21 @@ A standard Supabase project (free tier workable for solo use; Pro recommended fo
 
 RLS (Row Level Security) is enabled on all workspace-scoped tables. Your data is isolated within your project.
 
-### 3. Cloudflare Pages (your dashboard)
+### 3. Cloudflare Workers (your dashboard)
 
-A Next.js 15 app deployed to Cloudflare Pages. Connects directly to your Supabase project via the anon key + user JWT.
+A Next.js 15 app deployed to Cloudflare Workers via `@opennextjs/cloudflare`. Connects directly to your Supabase project via the anon key + user JWT. Auth is handled by Supabase Auth with server-side session management.
 
-Pages at v0.1:
+Current pages:
 - `/` — daily overview: tokens, cost, top projects
 - `/usage` — detailed per-model usage over time
-- `/projects` — project attribution breakdown
+- `/projects` — project attribution breakdown with per-model detail
+- `/subscriptions` — AI subscriptions with 30-day token/cost totals
+- `/quota` — quota windows (5h rolling, 7-day calendar) with live progress bars
+- `/users` — team member usage breakdown with 30-day totals
+- `/reconcile` — click-to-assign UI for resolving unattributed events
+- `/wrap` — year-in-review summary
 - `/raw` — live feed of recent events (uses Supabase Realtime)
+- `/auth/login`, `/auth/logout`, `/auth/callback` — authentication flow
 
 ### 4. Telegram digest
 
@@ -109,16 +119,16 @@ There is no shared Tokenmaxx database. Your data never leaves your Supabase proj
 
 - **Service-role key:** Used by capture scripts and Edge Functions. Never exposed to the browser. Lives in machine-local env files.
 - **Anon key + JWT:** Used by the Next.js frontend in the browser. RLS enforces per-user, per-workspace access.
-- **No credential storage:** Quota capture uses session cookies you supply manually. No passwords are stored.
+- **No credential storage:** Quota capture uses session cookies read automatically from your Brave browser profile on disk. No passwords are stored.
 
 ---
 
-## Known constraints (Cloudflare Pages + Next.js adapter)
+## Known constraints (Cloudflare Workers + Next.js adapter)
 
-The frontend uses the `@cloudflare/next-on-pages` adapter. Trade-offs:
+The frontend uses the `@opennextjs/cloudflare` adapter. Trade-offs:
 
 - **Edge Runtime only** — no Node.js middleware in route handlers
 - **ISR limited** — use `cache: 'no-store'` for dynamic pages
 - **Streaming RSC** — some Suspense patterns may need fallback to client-side loading
 
-These are accepted constraints for MVP. See the roadmap for the v1.0 revisit gate.
+These are accepted constraints for the current release.

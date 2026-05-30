@@ -3,7 +3,7 @@
  *
  * Hand-authored to match the prod schema (03-data-model.md v0.2).
  * Replace with generated types once Supabase CLI is set up:
- *   npx supabase gen types typescript --project-id ewaknihwrzysakbtjzlx > lib/supabase/types.ts
+ *   npx supabase gen types typescript --project-id YOUR_PROJECT_REF > lib/supabase/types.ts
  *
  * Key schema facts:
  *   - cost_usd is null on all rows until pricing_snapshots is populated
