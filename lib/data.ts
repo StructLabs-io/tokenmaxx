@@ -666,7 +666,9 @@ export async function getQuotaWindowDetails(): Promise<{
         const latestByWindow = new Map<number, number | null>();
         for (const obs of observations) {
           if (!latestByWindow.has(obs.quota_window_id)) {
-            latestByWindow.set(obs.quota_window_id, obs.percent_used);
+            // percent_used is 0-100 in DB; WindowCard expects 0-1
+            const pct = obs.percent_used != null ? obs.percent_used / 100 : null;
+            latestByWindow.set(obs.quota_window_id, pct);
           }
         }
         for (const w of windows) {
