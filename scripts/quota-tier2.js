@@ -1,16 +1,20 @@
 #!/usr/bin/env node
 /**
- * quota-tier2.js -- claude.ai API (session cookie) -> Supabase quota_observations
+ * quota-tier2.js -- claude.ai API (Brave session cookies) -> Supabase quota_observations
  *
- * Fetches quota data from the claude.ai usage report endpoint using a
- * user-supplied session cookie and writes to quota_observations.
+ * Fetches quota data from the claude.ai usage report endpoint using session cookies
+ * read directly from the Brave browser profile on disk (no browser needs to be open).
+ * Falls back to CLAUDE_SESSION_KEY / CLAUDE_DEVICE_ID env vars if set.
  *
  * This accesses only the user's own account data via their own session.
  * Run responsibly — minimum 15-minute interval enforced by this script.
  *
  * NOTE: As of 2026-05-30, Cloudflare bot protection on claude.ai blocks all
- * non-browser HTTP clients (Node.js, curl). Tier 2 requires a valid cf_clearance
- * cookie from a real browser session, or use Playwright (Tier 3). Use quota-tier1.js
+ * non-browser HTTP clients (Node.js, curl) via JA3/JA4 TLS fingerprint matching,
+ * even when cf_clearance and all valid session cookies are present.
+ * This script reads all relevant cookies from Brave automatically (including cf_clearance),
+ * but the TLS fingerprint mismatch still causes 403 responses. If Cloudflare protection
+ * is removed or relaxed, this script will work as-is. For now, use quota-tier1.js
  * (Code Meter widget file) for Mac-local quota capture instead.
  *
  * Usage:
@@ -18,21 +22,23 @@
  *   node quota-tier2.js --dry-run
  *
  * Environment:
- *   SUPABASE_URL              Required
- *   SUPABASE_SERVICE_ROLE_KEY Required
- *   CLAUDE_ORG_ID             Required — Anthropic org ID (visible in claude.ai URLs)
- *   CLAUDE_SESSION_KEY        Required — value of the sessionKey cookie from claude.ai
+ *   SUPABASE_URL                  Required
+ *   SUPABASE_SERVICE_ROLE_KEY     Required
+ *   CLAUDE_ORG_ID                 Required — Anthropic org ID (visible in claude.ai URLs)
+ *   BRAVE_PROFILE_PATH            Optional — override default Brave profile path
+ *   CLAUDE_SESSION_KEY            Optional — manual override (skip Brave read)
+ *   CLAUDE_DEVICE_ID              Optional — manual override
  *
- * See .env.example for setup instructions.
+ * See scripts/CRON_SETUP.md for cron setup instructions.
  */
 
 'use strict';
 
+const { getBraveCookies } = require('./brave-cookies.js');
+
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const CLAUDE_ORG_ID = process.env.CLAUDE_ORG_ID;
-const CLAUDE_SESSION_KEY = process.env.CLAUDE_SESSION_KEY;
-const CLAUDE_DEVICE_ID = process.env.CLAUDE_DEVICE_ID || '';
 
 // Minimum interval between observations for the same window (minutes)
 const MIN_INTERVAL_MINUTES = 10;
@@ -82,14 +88,71 @@ async function getLastObservationAge(windowId) {
   return (Date.now() - lastMs) / 60000; // minutes ago
 }
 
+// --- Resolve session cookies ---
+
+/**
+ * Get the cookies needed to authenticate to claude.ai.
+ * Priority: env var overrides first, then Brave profile.
+ *
+ * @returns {Promise<{cookieString: string, source: string}>}
+ */
+async function resolveCookies() {
+  const manualSessionKey = process.env.CLAUDE_SESSION_KEY;
+  const manualDeviceId = process.env.CLAUDE_DEVICE_ID;
+
+  // If both are supplied via env, use them directly (no Brave read needed)
+  if (manualSessionKey) {
+    let cookieString = `sessionKey=${manualSessionKey}`;
+    if (manualDeviceId) cookieString += `; anthropic-device-id=${manualDeviceId}`;
+    return { cookieString, source: 'env' };
+  }
+
+  // Read from Brave profile
+  console.log('quota-tier2: reading cookies from Brave profile...');
+  let cookies;
+  try {
+    cookies = await getBraveCookies('claude.ai', [
+      'sessionKey',
+      'cf_clearance',
+      'anthropic-device-id',
+      '__ssid',
+    ]);
+  } catch (err) {
+    throw new Error(`Failed to read Brave cookies: ${err.message}`);
+  }
+
+  if (!cookies.sessionKey) {
+    throw new Error(
+      'sessionKey cookie not found in Brave profile for claude.ai.\n' +
+      'Make sure you are logged into claude.ai in Brave.\n' +
+      'Alternatively, set CLAUDE_SESSION_KEY env var as a manual override.'
+    );
+  }
+
+  const parts = [];
+  if (cookies.sessionKey) parts.push(`sessionKey=${cookies.sessionKey}`);
+  if (cookies.cf_clearance) parts.push(`cf_clearance=${cookies.cf_clearance}`);
+  if (manualDeviceId) {
+    parts.push(`anthropic-device-id=${manualDeviceId}`);
+  } else if (cookies['anthropic-device-id']) {
+    parts.push(`anthropic-device-id=${cookies['anthropic-device-id']}`);
+  }
+  if (cookies.__ssid) parts.push(`__ssid=${cookies.__ssid}`);
+
+  const found = Object.entries(cookies).filter(([, v]) => v).map(([k]) => k);
+  console.log(`quota-tier2: found cookies from Brave: ${found.join(', ')}`);
+
+  return { cookieString: parts.join('; '), source: 'brave' };
+}
+
 // --- Fetch claude.ai usage report ---
 
-async function fetchClaudeUsage(orgId, sessionKey) {
+async function fetchClaudeUsage(orgId, cookieString) {
   const url = `https://claude.ai/api/organizations/${encodeURIComponent(orgId)}/usage`;
   const res = await fetch(url, {
     method: 'GET',
     headers: {
-      'Cookie': `sessionKey=${sessionKey}${CLAUDE_DEVICE_ID ? `; anthropic-device-id=${CLAUDE_DEVICE_ID}` : ''}`,
+      'Cookie': cookieString,
       'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
       'Accept': 'application/json, text/plain, */*',
       'Accept-Language': 'en-US,en;q=0.9',
@@ -100,8 +163,8 @@ async function fetchClaudeUsage(orgId, sessionKey) {
 
   if (res.status === 401 || res.status === 403) {
     throw new Error(
-      `Auth failed (${res.status}) — CLAUDE_SESSION_KEY may be expired. ` +
-      'Log into claude.ai, open DevTools > Application > Cookies, copy sessionKey value.'
+      `Auth failed (${res.status}) — session cookie may be expired or Cloudflare is blocking.\n` +
+      'Log into claude.ai in Brave and try again. If the issue persists, check cf_clearance cookie.'
     );
   }
 
@@ -114,8 +177,9 @@ async function fetchClaudeUsage(orgId, sessionKey) {
   if (!contentType.includes('application/json')) {
     const text = await res.text();
     throw new Error(
-      `Unexpected content-type "${contentType}" — got HTML instead of JSON. ` +
-      `Session cookie may be invalid. Response snippet: ${text.slice(0, 150)}`
+      `Unexpected content-type "${contentType}" — got HTML instead of JSON.\n` +
+      `Cloudflare may be blocking the request. Try opening claude.ai in Brave first.\n` +
+      `Response snippet: ${text.slice(0, 150)}`
     );
   }
 
@@ -152,11 +216,11 @@ async function main() {
 
   if (args.includes('--help') || args.includes('-h')) {
     console.log(`
-quota-tier2.js -- claude.ai API (session cookie) -> Supabase quota_observations
+quota-tier2.js -- claude.ai API (Brave session cookies) -> Supabase quota_observations
 
 Fetches your Claude Code quota from claude.ai and records it to Supabase.
-Uses your own session cookie — accesses only your own account data.
-Minimum 15-minute cron interval. Script self-rate-limits at 10 min.
+Reads cookies automatically from Brave browser profile on disk — no manual
+cookie copy-paste needed. Falls back to CLAUDE_SESSION_KEY env var if set.
 
 Usage:
   node quota-tier2.js
@@ -166,18 +230,15 @@ Options:
   --dry-run     Print what would be written, don't write
   --help, -h    Show this message
 
-Environment:
-  SUPABASE_URL              Required
-  SUPABASE_SERVICE_ROLE_KEY Required
-  CLAUDE_ORG_ID             Required — org ID from claude.ai URL
-  CLAUDE_SESSION_KEY        Required — sessionKey cookie value from claude.ai
+Required environment:
+  SUPABASE_URL              Supabase project URL
+  SUPABASE_SERVICE_ROLE_KEY Supabase service role key
+  CLAUDE_ORG_ID             Org ID from claude.ai URL
 
-How to get CLAUDE_SESSION_KEY:
-  1. Open claude.ai in browser, log in
-  2. Open DevTools (F12) > Application > Cookies > claude.ai
-  3. Copy the value of the "sessionKey" cookie
-  4. Add to your .env: CLAUDE_SESSION_KEY=<value>
-  Session keys expire — re-copy when you see 401 errors.
+Optional environment (automatic if Brave profile is available):
+  BRAVE_PROFILE_PATH        Override default Brave cookie DB path
+  CLAUDE_SESSION_KEY        Manual sessionKey override (skips Brave read)
+  CLAUDE_DEVICE_ID          Manual anthropic-device-id override
 `);
     process.exit(0);
   }
@@ -187,7 +248,6 @@ How to get CLAUDE_SESSION_KEY:
   if (!SUPABASE_URL) missing.push('SUPABASE_URL');
   if (!SUPABASE_KEY) missing.push('SUPABASE_SERVICE_ROLE_KEY');
   if (!CLAUDE_ORG_ID) missing.push('CLAUDE_ORG_ID');
-  if (!CLAUDE_SESSION_KEY) missing.push('CLAUDE_SESSION_KEY');
   if (missing.length > 0) {
     console.error(`Error: missing required env vars: ${missing.join(', ')}`);
     console.error('Run with --help for setup instructions.');
@@ -199,10 +259,20 @@ How to get CLAUDE_SESSION_KEY:
 
   console.log(`quota-tier2: fetching claude.ai usage for org ${CLAUDE_ORG_ID}${dryRun ? ' [DRY RUN]' : ''}`);
 
-  // Fetch from claude.ai first (single API call covers all windows)
+  // Resolve cookies (Brave profile or env var)
+  let cookieInfo;
+  try {
+    cookieInfo = await resolveCookies();
+  } catch (err) {
+    console.error(`quota-tier2: cookie resolution failed: ${err.message}`);
+    process.exit(1);
+  }
+  console.log(`quota-tier2: using cookies from ${cookieInfo.source}`);
+
+  // Fetch from claude.ai (single API call covers all windows)
   let rawData;
   try {
-    rawData = await fetchClaudeUsage(CLAUDE_ORG_ID, CLAUDE_SESSION_KEY);
+    rawData = await fetchClaudeUsage(CLAUDE_ORG_ID, cookieInfo.cookieString);
   } catch (err) {
     console.error(`quota-tier2: fetch failed: ${err.message}`);
     process.exit(1);

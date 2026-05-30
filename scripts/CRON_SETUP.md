@@ -10,7 +10,9 @@
 | `server-capture.js` | Capture OpenClaw server JSONL events -> Supabase `usage_events` | Daily (runs after cron completes) |
 | `local-capture.js` | Capture MacBook Codex session files -> Supabase `usage_events` | Daily or on-demand |
 | `quota-tier1.js` | Read Code Meter widget-data.json -> Supabase `quota_observations` | Every 15 min (MacBook only) |
-| `quota-tier2.js` | Fetch claude.ai quota via session cookie -> Supabase `quota_observations` | Every 15 min (n9c server or MacBook) |
+| `quota-tier2.js` | Fetch claude.ai quota via Brave cookies -> Supabase `quota_observations` | Every 15 min (MacBook only) |
+| `quota-codex.js` | Fetch OpenAI Codex Pro quota via Brave cookies -> Supabase `quota_observations` | Every 15 min (MacBook only) |
+| `brave-cookies.js` | Utility: read + decrypt cookies from Brave profile on disk (macOS) | Used by tier2 + codex scripts |
 
 ## Environment variables required
 
@@ -120,23 +122,54 @@ Add to MacBook crontab via `crontab -e`:
 
 Non-fatal if Code Meter is not running — script exits 0 if widget-data.json not found.
 
-## Quota Tier 2 (n9c server or MacBook)
+## Quota Tier 2 (MacBook — requires Brave with claude.ai session active)
 
-Requires `CLAUDE_ORG_ID` and `CLAUDE_SESSION_KEY` in environment.
-See `scripts/.env.example` for how to obtain the session key.
+Reads cookies directly from Brave's on-disk profile — no manual session key copy-paste needed,
+no browser needs to be open. Requires `CLAUDE_ORG_ID` in environment.
 
 ```cron
-# Tokenmaxx — quota tier 2 (claude.ai API, every 15 min)
+# Tokenmaxx — quota tier 2 (claude.ai API via Brave cookies, every 15 min)
 */15 * * * * cd /Users/benauknowra/Projects/public/tokenmaxx && \
   SUPABASE_URL=<prod_url> \
   SUPABASE_SERVICE_ROLE_KEY=<service_role_key> \
   CLAUDE_ORG_ID=<your_org_id> \
-  CLAUDE_SESSION_KEY=<your_session_key> \
   node scripts/quota-tier2.js >> ~/.config/tokenmaxx/quota-tier2.log 2>&1
 ```
 
 Script self-rate-limits at 10 min — safe to run every 15 min from cron.
-Session keys expire; re-copy from DevTools when you see 401 errors in the log.
+
+**How it works:** Reads `sessionKey`, `cf_clearance`, `anthropic-device-id`, and `__ssid` directly
+from `~/Library/Application Support/BraveSoftware/Brave-Browser/Default/Cookies`.
+The macOS Keychain is used to decrypt the cookie values (Brave Safe Storage password).
+As long as you are logged into claude.ai in Brave, the cron job always has a live session.
+
+**Non-default Brave profile:** If you use a non-default profile, set:
+```
+BRAVE_PROFILE_PATH=/path/to/BraveSoftware/Brave-Browser/Profile 1/Cookies
+```
+
+**Manual override (optional):** You can still set `CLAUDE_SESSION_KEY` and `CLAUDE_DEVICE_ID`
+env vars to bypass Brave cookie reading entirely (e.g. on a server without Brave).
+
+## Quota Codex (MacBook — requires Brave with platform.openai.com session)
+
+Reads cookies from Brave for openai.com and probes known platform endpoints for Codex quota data.
+Non-fatal — exits 0 if no session found or endpoint not yet discovered.
+
+```cron
+# Tokenmaxx — quota codex (OpenAI Codex Pro quota, every 15 min)
+*/15 * * * * cd /Users/benauknowra/Projects/public/tokenmaxx && \
+  SUPABASE_URL=<prod_url> \
+  SUPABASE_SERVICE_ROLE_KEY=<service_role_key> \
+  node scripts/quota-codex.js >> ~/.config/tokenmaxx/quota-codex.log 2>&1
+```
+
+**Note:** As of 2026-05-30, the correct platform.openai.com quota endpoint has not been confirmed.
+The script probes multiple candidate endpoints and logs the shape of any successful response.
+Once the endpoint is confirmed, update `extractCodexQuota()` in `quota-codex.js`.
+
+Also requires Codex quota windows to be added to the `quota_windows` Supabase table
+(labels: "Codex 5h", "Codex weekly").
 
 ## Quota Rule Evaluation
 
