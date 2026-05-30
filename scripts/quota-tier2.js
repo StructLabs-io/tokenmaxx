@@ -9,13 +9,8 @@
  * This accesses only the user's own account data via their own session.
  * Run responsibly — minimum 15-minute interval enforced by this script.
  *
- * NOTE: As of 2026-05-30, Cloudflare bot protection on claude.ai blocks all
- * non-browser HTTP clients (Node.js, curl) via JA3/JA4 TLS fingerprint matching,
- * even when cf_clearance and all valid session cookies are present.
- * This script reads all relevant cookies from Brave automatically (including cf_clearance),
- * but the TLS fingerprint mismatch still causes 403 responses. If Cloudflare protection
- * is removed or relaxed, this script will work as-is. For now, use quota-tier1.js
- * (Code Meter widget file) for Mac-local quota capture instead.
+ * Uses cycletls to spoof Chrome's JA3/JA4 TLS fingerprint, bypassing Cloudflare's
+ * bot protection. Confirmed working 2026-05-30.
  *
  * Usage:
  *   node quota-tier2.js
@@ -34,7 +29,12 @@
 
 'use strict';
 
+const initCycleTLS = require('cycletls');
 const { getBraveCookies } = require('./brave-cookies.js');
+
+// Chrome 124 JA3 fingerprint for Cloudflare bypass
+const CHROME_JA3 = '772,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,0-23-65281-10-11-35-16-5-13-18-51-45-43-27-17513,29-23-24,0';
+const CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -147,43 +147,34 @@ async function resolveCookies() {
 
 // --- Fetch claude.ai usage report ---
 
-async function fetchClaudeUsage(orgId, cookieString) {
+async function fetchClaudeUsage(orgId, cookieString, cycleTLS) {
   const url = `https://claude.ai/api/organizations/${encodeURIComponent(orgId)}/usage`;
-  const res = await fetch(url, {
-    method: 'GET',
+  const resp = await cycleTLS(url, {
     headers: {
       'Cookie': cookieString,
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      'Accept': 'application/json, text/plain, */*',
+      'Accept': 'application/json',
       'Accept-Language': 'en-US,en;q=0.9',
       'Referer': 'https://claude.ai/',
       'anthropic-client-platform': 'web_claude_ai',
     },
-  });
+    ja3: CHROME_JA3,
+    userAgent: CHROME_UA,
+  }, 'get');
 
-  if (res.status === 401 || res.status === 403) {
+  if (resp.status === 401 || resp.status === 403) {
     throw new Error(
-      `Auth failed (${res.status}) — session cookie may be expired or Cloudflare is blocking.\n` +
-      'Log into claude.ai in Brave and try again. If the issue persists, check cf_clearance cookie.'
+      `Auth failed (${resp.status}) — session cookie may be expired or cf_clearance invalid.\n` +
+      'Open claude.ai in Brave to refresh the session, then retry.'
     );
   }
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`claude.ai API returned ${res.status}: ${text.slice(0, 200)}`);
+  if (resp.status < 200 || resp.status >= 300) {
+    const text = await resp.text();
+    throw new Error(`claude.ai API returned ${resp.status}: ${text.slice(0, 200)}`);
   }
 
-  const contentType = res.headers.get('content-type') || '';
-  if (!contentType.includes('application/json')) {
-    const text = await res.text();
-    throw new Error(
-      `Unexpected content-type "${contentType}" — got HTML instead of JSON.\n` +
-      `Cloudflare may be blocking the request. Try opening claude.ai in Brave first.\n` +
-      `Response snippet: ${text.slice(0, 150)}`
-    );
-  }
-
-  return res.json();
+  const text = await resp.text();
+  return JSON.parse(text);
 }
 
 // --- Parse usage report ---
@@ -269,12 +260,16 @@ Optional environment (automatic if Brave profile is available):
   }
   console.log(`quota-tier2: using cookies from ${cookieInfo.source}`);
 
+  // Init CycleTLS (Chrome TLS fingerprint spoof — bypasses Cloudflare)
+  const cycleTLS = await initCycleTLS();
+
   // Fetch from claude.ai (single API call covers all windows)
   let rawData;
   try {
-    rawData = await fetchClaudeUsage(CLAUDE_ORG_ID, cookieInfo.cookieString);
+    rawData = await fetchClaudeUsage(CLAUDE_ORG_ID, cookieInfo.cookieString, cycleTLS);
   } catch (err) {
     console.error(`quota-tier2: fetch failed: ${err.message}`);
+    await cycleTLS.exit();
     process.exit(1);
   }
 
@@ -337,6 +332,7 @@ Optional environment (automatic if Brave profile is available):
     }
   }
 
+  await cycleTLS.exit();
   console.log('\nquota-tier2: done');
 }
 
