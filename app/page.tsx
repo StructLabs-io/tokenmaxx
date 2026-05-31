@@ -170,6 +170,11 @@ export default async function DashboardPage() {
         {quotaWindows.length > 0 && (
           <div className="space-y-3">
             <h2 className="text-sm font-medium px-0.5">Quota windows</h2>
+            {quotaWindows.some((w) => w.provider === "openai-codex") && (
+              <p className="text-xs text-muted-foreground rounded border border-border bg-muted/40 px-3 py-1.5">
+                Codex quota polled via session cookie — refresh <code className="font-mono text-[11px]">CHATGPT_SESSION_TOKEN_0/1</code> in <code className="font-mono text-[11px]">shared/.env</code> if data goes stale.
+              </p>
+            )}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {quotaWindows.map((qw) => (
                 <WindowCard

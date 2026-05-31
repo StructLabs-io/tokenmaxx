@@ -127,6 +127,15 @@ export default async function QuotaPage() {
                 </Badge>
               </div>
 
+              {group.provider === "openai-codex" && (
+                <p className="text-xs text-muted-foreground rounded border border-border bg-muted/40 px-3 py-1.5">
+                  Quota % is polled every 30 min via session cookie.{" "}
+                  <span className="text-foreground/70">
+                    If bars show stale, refresh <code className="font-mono text-[11px]">CHATGPT_SESSION_TOKEN_0/1</code> in <code className="font-mono text-[11px]">shared/.env</code> and crontab.
+                  </span>
+                </p>
+              )}
+
               <div className="grid gap-4 sm:grid-cols-2">
                 {group.windows.map((detail) => (
                   <div key={detail.id} className="space-y-2">
