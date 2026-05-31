@@ -6,7 +6,7 @@
  */
 
 import { getWrapStats } from "@/lib/data";
-import { formatTokens, formatCost, formatDateShort, formatTokensCompact } from "@/lib/utils";
+import { formatTokens, formatCost, formatDateShort, formatTokensCompact, formatCostCompact } from "@/lib/utils";
 import {
   Card,
   CardContent,
@@ -89,8 +89,11 @@ export default async function WrapPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="px-4 pb-4 overflow-hidden">
-            <p className="text-3xl font-black tabular-nums leading-none truncate">
-              {totalCost != null ? formatCost(totalCost) : "—"}
+            <p
+              className="text-3xl font-black tabular-nums leading-none truncate"
+              title={totalCost != null ? formatCost(totalCost) : undefined}
+            >
+              {totalCost != null ? formatCostCompact(totalCost) : "—"}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
               {totalCost == null ? "pricing pending" : "USD"}

@@ -9,7 +9,7 @@ import {
   CartesianGrid,
   Tooltip,
 } from "recharts";
-import { formatTokens } from "@/lib/utils";
+import { formatTokens, formatTokensCompact } from "@/lib/utils";
 
 interface BarDataPoint {
   label: string;
@@ -39,7 +39,7 @@ export function UsageBarChart({
         />
         <YAxis
           tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
-          tickFormatter={(v: number) => formatTokens(v)}
+          tickFormatter={(v: number) => formatTokensCompact(v)}
           axisLine={false}
           tickLine={false}
           width={52}
