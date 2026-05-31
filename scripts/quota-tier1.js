@@ -25,6 +25,28 @@ const fs = require('fs');
 const path = require('path');
 const HOME = process.env.HOME || require('os').homedir();
 
+// Lock file prevents multiple concurrent instances (e.g. from cron pile-up)
+const LOCK_FILE = '/tmp/quota-tier1.lock';
+const LOCK_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes max run time
+
+function acquireLock() {
+  try {
+    const stat = fs.statSync(LOCK_FILE);
+    if (Date.now() - stat.mtimeMs < LOCK_TIMEOUT_MS) {
+      console.log('quota-tier1: another instance is running — exiting');
+      process.exit(0);
+    }
+    fs.unlinkSync(LOCK_FILE); // stale lock
+  } catch {
+    // no lock file — proceed
+  }
+  fs.writeFileSync(LOCK_FILE, String(process.pid));
+}
+
+function releaseLock() {
+  try { fs.unlinkSync(LOCK_FILE); } catch { /* ignore */ }
+}
+
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -67,7 +89,15 @@ async function supabaseRequest(urlPath, method = 'GET', body = null, extraHeader
 
 function findWidgetFile() {
   for (const candidate of WIDGET_DATA_CANDIDATES) {
-    if (fs.existsSync(candidate)) return candidate;
+    try {
+      if (fs.existsSync(candidate)) return candidate;
+    } catch (err) {
+      if (err.code === 'EPERM') {
+        console.log(`quota-tier1: EPERM checking ${path.basename(candidate)} — Code Meter directory not accessible (no Full Disk Access). Exiting 0.`);
+        releaseLock();
+        process.exit(0);
+      }
+    }
   }
   return null;
 }
@@ -175,10 +205,13 @@ Environment:
 
   const dryRun = args.includes('--dry-run');
 
+  acquireLock();
+
   // Find widget file
   const widgetFile = findWidgetFile();
   if (!widgetFile) {
     console.log('quota-tier1: widget-data.json not found — Code Meter may not be running. Exiting 0.');
+    releaseLock();
     process.exit(0);
   }
 
@@ -189,7 +222,13 @@ Environment:
   try {
     raw = JSON.parse(fs.readFileSync(widgetFile, 'utf8'));
   } catch (err) {
+    if (err.code === 'EPERM') {
+      console.log('quota-tier1: EPERM reading widget-data.json — no Full Disk Access in cron. Exiting 0.');
+      releaseLock();
+      process.exit(0);
+    }
     console.error(`quota-tier1: failed to parse widget-data.json: ${err.message}`);
+    releaseLock();
     process.exit(1);
   }
 
@@ -275,10 +314,12 @@ Environment:
     }
   }
 
+  releaseLock();
   console.log('\nquota-tier1: done');
 }
 
 main().catch(err => {
+  releaseLock();
   console.error('quota-tier1 fatal error:', err.message);
   process.exit(1);
 });
