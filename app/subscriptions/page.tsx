@@ -33,7 +33,15 @@ function providerBadge(provider: string) {
 function SubscriptionCard({ sub }: { sub: SubscriptionSummary }) {
   const costEfficiencyText =
     sub.monthly_cost_usd != null && sub.cost_30d != null
-      ? `You've used ${formatCost(sub.cost_30d)} of your ${formatCost(sub.monthly_cost_usd)}/mo subscription this billing period.`
+      ? (() => {
+          const ratio = sub.cost_30d / sub.monthly_cost_usd;
+          if (ratio >= 1) {
+            const multiple = ratio.toFixed(1);
+            return `Equivalent API cost: ${formatCost(sub.cost_30d)} — you're getting ${multiple}× the value of the ${formatCost(sub.monthly_cost_usd)}/mo flat plan.`;
+          }
+          const pct = Math.round(ratio * 100);
+          return `Equivalent API cost: ${formatCost(sub.cost_30d)} (${pct}% of the ${formatCost(sub.monthly_cost_usd)}/mo flat plan). Room to use more before the plan pays off vs API pricing.`;
+        })()
       : sub.monthly_cost_usd != null
       ? `Subscription: ${formatCost(sub.monthly_cost_usd)}/mo — usage cost not yet calculated.`
       : null;

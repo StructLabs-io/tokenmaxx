@@ -190,6 +190,15 @@ function readCronEventsForDate(targetDate) {
   return events;
 }
 
+// Server defaults to UTC for date_local; override via TOKENMAXX_USER_TIMEZONE if needed.
+const SERVER_TIMEZONE = process.env.TOKENMAXX_USER_TIMEZONE || 'UTC';
+
+function localDateInTz(isoUtc, tz) {
+  return new Date(isoUtc).toLocaleDateString('en-CA', {
+    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+  });
+}
+
 function buildUsageRow(event, workspaceId, userId, userSlug, context = 'openclaw') {
   const ts = new Date(event.ts).toISOString();
   const dateUtc = ts.slice(0, 10);
@@ -198,6 +207,7 @@ function buildUsageRow(event, workspaceId, userId, userSlug, context = 'openclaw
     user_id: userId,
     captured_at: ts,
     date_utc: dateUtc,
+    date_local: localDateInTz(ts, SERVER_TIMEZONE),
     provider: event.provider,
     model: event.model,
     capture_method: captureMethodForProvider(event.provider, 'cli', context),
@@ -324,6 +334,7 @@ async function processCodexSessions(state, workspaceId, userId, userSlug, dryRun
       user_id: userId,
       captured_at: session.ts,
       date_utc: dateUtc,
+      date_local: localDateInTz(session.ts, SERVER_TIMEZONE),
       provider: 'openai-codex',
       model: session.model,
       capture_method: `openai-codex.ccusage.cli.${context}`,

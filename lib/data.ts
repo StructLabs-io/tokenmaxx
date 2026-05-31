@@ -24,6 +24,44 @@ import {
 export { isServiceRoleConfigured };
 
 // ---------------------------------------------------------------------------
+// Pagination helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch all rows from a Supabase query, paging through PostgREST's 1000-row cap.
+ *
+ * Usage:
+ *   const all = await fetchAll((from, to) =>
+ *     supabase.from("usage_events").select("...").gte("date_utc", cutoff).range(from, to)
+ *   );
+ *
+ * The query builder must accept (from, to) and apply .range(from, to). Returns
+ * the concatenated rows array. Page size defaults to 1000 (PostgREST's max).
+ */
+export async function fetchAll<T>(
+  build: (from: number, to: number) => Promise<{ data: T[] | null; error: unknown }>,
+  pageSize = 1000,
+): Promise<T[]> {
+  const all: T[] = [];
+  let from = 0;
+  // Safety cap — don't loop forever on a broken query.
+  const MAX_PAGES = 100;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const to = from + pageSize - 1;
+    const { data, error } = await build(from, to);
+    if (error) {
+      console.error("[fetchAll] error on page", page, error);
+      break;
+    }
+    if (!data || data.length === 0) break;
+    all.push(...data);
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+  return all;
+}
+
+// ---------------------------------------------------------------------------
 // Home page data
 // ---------------------------------------------------------------------------
 
@@ -38,20 +76,20 @@ export async function getDashboardStats(days = 14): Promise<DashboardStats & { u
     cutoff.setDate(cutoff.getDate() - days);
     const cutoffDate = cutoff.toISOString().slice(0, 10);
 
-    const { data: events, error, count } = await supabase
-      .from("usage_events")
-      .select("date_utc,total_tokens,cost_usd,project_id", { count: "exact" })
-      .gte("date_utc", cutoffDate)
-      .order("date_utc", { ascending: true }) as { data: any[] | null; error: any; count: number | null };
+    const events = await fetchAll<any>((from, to) =>
+      supabase
+        .from("usage_events")
+        .select("date_utc,total_tokens,cost_usd,project_id")
+        .gte("date_utc", cutoffDate)
+        .order("date_utc", { ascending: true })
+        .range(from, to) as unknown as Promise<{ data: any[] | null; error: any }>,
+    );
 
-    if (error) {
-      console.error("[data.getDashboardStats] Supabase error:", error);
-      return buildSeedStats(days);
-    }
-
-    if (!events || events.length === 0) {
+    if (events.length === 0) {
       return { ...emptyStats(days), usingSeedData: false };
     }
+
+    const count = events.length;
 
     // Daily totals
     const byDate = new Map<string, { tokens: number; cost: number | null }>();
@@ -148,17 +186,14 @@ export async function getProjectsList(days = 30): Promise<{
       return buildSeedProjectsList();
     }
 
-    const { data: events, error: evtErr, count } = await supabase
-      .from("usage_events")
-      .select("project_id,total_tokens,cost_usd", { count: "exact" })
-      .gte("date_utc", cutoffDate) as { data: any[] | null; error: any; count: number | null };
-
-    if (evtErr) {
-      console.error("[data.getProjectsList] Events error:", evtErr);
-      return buildSeedProjectsList();
-    }
-
-    const allEvents = (events as any[] ?? []);
+    const allEvents = await fetchAll<any>((from, to) =>
+      supabase
+        .from("usage_events")
+        .select("project_id,total_tokens,cost_usd")
+        .gte("date_utc", cutoffDate)
+        .range(from, to) as unknown as Promise<{ data: any[] | null; error: any }>,
+    );
+    const count = allEvents.length;
     const byProject = new Map<string, { tokens: number; cost: number | null }>();
     let unattributedCount = 0;
 
@@ -374,6 +409,8 @@ export interface FilterOptions {
   models: string[];
   userIds: string[];
   userNames: Map<string, string>;
+  projectIds: string[];
+  projectNames: Map<string, string>;
   usingSeedData: boolean;
 }
 
@@ -382,24 +419,33 @@ export async function getFilterOptions(): Promise<FilterOptions> {
     const models = [...new Set(SEED_USAGE_EVENTS.map((e) => e.model))].sort();
     const userIds = SEED_USERS.map((u) => u.id);
     const userNames = new Map(SEED_USERS.map((u) => [u.id, u.display_name]));
-    return { models, userIds, userNames, usingSeedData: true };
+    return { models, userIds, userNames, projectIds: [], projectNames: new Map(), usingSeedData: true };
   }
 
   try {
     const supabase = getSupabaseServerClient();
-    const [eventsRes, usersRes] = await Promise.all([
-      supabase.from("usage_events").select("model").limit(500) as unknown as Promise<{ data: any[] | null }>,
+    const [eventRows, usersRes, projectsRes] = await Promise.all([
+      // Paginated sweep so we don't miss low-volume models behind the 1000-row cap
+      fetchAll<{ model: string }>((from, to) =>
+        supabase.from("usage_events").select("model").range(from, to) as unknown as Promise<{ data: any[] | null; error: any }>,
+      ),
       supabase.from("users").select("id,display_name").is("deleted_at", null) as unknown as Promise<{ data: any[] | null }>,
+      supabase.from("projects").select("id,display_name,client").is("deleted_at", null).order("display_name") as unknown as Promise<{ data: any[] | null }>,
     ]);
 
-    const models = [...new Set((eventsRes.data ?? []).map((e: any) => e.model))].sort() as string[];
+    const models = [...new Set(eventRows.map((e: any) => e.model))].sort() as string[];
     const users = (usersRes.data ?? []) as { id: string; display_name: string }[];
     const userIds = users.map((u) => u.id);
     const userNames = new Map(users.map((u) => [u.id, u.display_name]));
+    const projects = (projectsRes.data ?? []) as { id: string; display_name: string; client: string | null }[];
+    const projectIds = projects.map((p) => p.id);
+    const projectNames = new Map(
+      projects.map((p) => [p.id, p.client ? `${p.client} / ${p.display_name}` : p.display_name]),
+    );
 
-    return { models, userIds, userNames, usingSeedData: false };
+    return { models, userIds, userNames, projectIds, projectNames, usingSeedData: false };
   } catch {
-    return { models: [], userIds: [], userNames: new Map(), usingSeedData: false };
+    return { models: [], userIds: [], userNames: new Map(), projectIds: [], projectNames: new Map(), usingSeedData: false };
   }
 }
 
@@ -545,16 +591,14 @@ export async function getSubscriptionsSummary(): Promise<{
     const cutoffDate30 = cutoff30.toISOString().slice(0, 10);
 
     const providers = [...new Set(subs.map((s) => s.provider))];
-    const { data: events30, error: evtErr } = await supabase
-      .from("usage_events")
-      .select("provider,total_tokens,cost_usd,captured_at")
-      .in("provider", providers)
-      .gte("date_utc", cutoffDate30) as { data: any[] | null; error: any };
-
-    if (evtErr) {
-      console.error("[data.getSubscriptionsSummary] events error:", evtErr);
-    }
-    const allEvents = (events30 ?? []) as any[];
+    const allEvents = await fetchAll<any>((from, to) =>
+      supabase
+        .from("usage_events")
+        .select("provider,total_tokens,cost_usd,captured_at")
+        .in("provider", providers)
+        .gte("date_utc", cutoffDate30)
+        .range(from, to) as unknown as Promise<{ data: any[] | null; error: any }>,
+    );
 
     // 4. Compute per-provider 30d totals
     const by30 = new Map<string, { tokens: number; cost: number | null }>();
@@ -725,21 +769,17 @@ export async function getModelBreakdown(days?: number): Promise<ModelBreakdownRo
 
   try {
     const supabase = getSupabaseServerClient();
-    let query = supabase
-      .from("usage_events")
-      .select("provider,model,input_tokens,output_tokens,total_tokens,cost_usd");
+    const cutoffDate = days != null
+      ? (() => { const c = new Date(); c.setDate(c.getDate() - days); return c.toISOString().slice(0, 10); })()
+      : null;
 
-    if (days != null) {
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - days);
-      query = query.gte("date_utc", cutoff.toISOString().slice(0, 10));
-    }
-
-    const { data, error } = await query as { data: any[] | null; error: any };
-    if (error || !data) {
-      console.error("[data.getModelBreakdown] Supabase error:", error);
-      return [];
-    }
+    const data = await fetchAll<any>((from, to) => {
+      let q = supabase
+        .from("usage_events")
+        .select("provider,model,input_tokens,output_tokens,total_tokens,cost_usd");
+      if (cutoffDate) q = q.gte("date_utc", cutoffDate);
+      return q.range(from, to) as unknown as Promise<{ data: any[] | null; error: any }>;
+    });
 
     const byModel = new Map<string, ModelBreakdownRow>();
     for (const e of data as any[]) {
@@ -792,18 +832,15 @@ export async function getWrapStats(): Promise<WrapStats | null> {
   try {
     const supabase = getSupabaseServerClient();
 
-    const { data: events, error, count } = await supabase
-      .from("usage_events")
-      .select("date_utc,provider,model,total_tokens,cost_usd,project_id", { count: "exact" })
-      .gte("date_utc", WRAP_CUTOFF)
-      .order("date_utc", { ascending: true }) as { data: any[] | null; error: any; count: number | null };
-
-    if (error) {
-      console.error("[data.getWrapStats] Supabase error:", error);
-      return null;
-    }
-
-    const rows = events ?? [];
+    const rows = await fetchAll<any>((from, to) =>
+      supabase
+        .from("usage_events")
+        .select("date_utc,provider,model,total_tokens,cost_usd,project_id")
+        .gte("date_utc", WRAP_CUTOFF)
+        .order("date_utc", { ascending: true })
+        .range(from, to) as unknown as Promise<{ data: any[] | null; error: any }>,
+    );
+    const count = rows.length;
     const hasCost = rows.some((r) => r.cost_usd != null);
     let totalTokens = 0;
     let totalCost: number | null = null;
@@ -1022,18 +1059,17 @@ export async function getUsersSummary(days = 30): Promise<{
     const cutoffDate = cutoff.toISOString().slice(0, 10);
 
     const userIds = (userRows as any[]).map((u) => u.id);
-    const { data: events, error: evtErr } = await supabase
-      .from("usage_events")
-      .select("user_id,total_tokens,cost_usd")
-      .in("user_id", userIds)
-      .gte("date_utc", cutoffDate) as { data: any[] | null; error: any };
-
-    if (evtErr) {
-      console.error("[data.getUsersSummary] Events error:", evtErr);
-    }
+    const events = await fetchAll<any>((from, to) =>
+      supabase
+        .from("usage_events")
+        .select("user_id,total_tokens,cost_usd")
+        .in("user_id", userIds)
+        .gte("date_utc", cutoffDate)
+        .range(from, to) as unknown as Promise<{ data: any[] | null; error: any }>,
+    );
 
     const byUser = new Map<string, { tokens: number; cost: number | null }>();
-    for (const e of (events ?? []) as any[]) {
+    for (const e of events as any[]) {
       if (!e.user_id) continue;
       const existing = byUser.get(e.user_id) ?? { tokens: 0, cost: null };
       byUser.set(e.user_id, {

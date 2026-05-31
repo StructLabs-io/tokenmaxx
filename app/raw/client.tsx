@@ -32,6 +32,8 @@ interface Props {
   models: string[];
   userIds: string[];
   userNames: Record<string, string>;
+  projectIds: string[];
+  projectNames: Record<string, string>;
   usingSeedData: boolean;
 }
 
@@ -41,11 +43,14 @@ export function RawClient({
   models,
   userIds,
   userNames,
+  projectIds,
+  projectNames,
   usingSeedData,
 }: Props) {
   const [query, setQuery] = useState("");
   const [filterUser, setFilterUser] = useState("all");
   const [filterModel, setFilterModel] = useState("all");
+  const [filterProject, setFilterProject] = useState("all");
   const [page, setPage] = useState(0);
 
   const filtered = useMemo(() => {
@@ -53,6 +58,13 @@ export function RawClient({
     return initialEvents.filter((e) => {
       if (filterUser !== "all" && e.user_id !== filterUser) return false;
       if (filterModel !== "all" && e.model !== filterModel) return false;
+      if (filterProject !== "all") {
+        if (filterProject === "__unattributed__") {
+          if (e.project_id) return false;
+        } else if (e.project_id !== filterProject) {
+          return false;
+        }
+      }
       if (q) {
         return (
           e.model.toLowerCase().includes(q) ||
@@ -63,7 +75,7 @@ export function RawClient({
       }
       return true;
     });
-  }, [initialEvents, filterUser, filterModel, query]);
+  }, [initialEvents, filterUser, filterModel, filterProject, query]);
 
   const pageCount = Math.ceil(filtered.length / PAGE_SIZE);
   const pageData = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
@@ -180,6 +192,23 @@ export function RawClient({
           ))}
         </select>
 
+        <select
+          value={filterProject}
+          onChange={(e) => {
+            setFilterProject(e.target.value);
+            setPage(0);
+          }}
+          className="h-8 rounded-md border border-input bg-background px-2 text-sm text-foreground max-w-[220px]"
+        >
+          <option value="all">All projects</option>
+          <option value="__unattributed__">— Unattributed —</option>
+          {projectIds.map((id) => (
+            <option key={id} value={id}>
+              {projectNames[id] ?? id}
+            </option>
+          ))}
+        </select>
+
         <Button
           variant="outline"
           size="sm"
@@ -229,6 +258,7 @@ export function RawClient({
               <TableRow>
                 <TableHead className="pl-6">Time</TableHead>
                 <TableHead>User</TableHead>
+                <TableHead>Project</TableHead>
                 <TableHead>Model</TableHead>
                 <TableHead>Capture method</TableHead>
                 <TableHead className="text-right">Input</TableHead>
@@ -249,6 +279,9 @@ export function RawClient({
                   </TableCell>
                   <TableCell className="text-sm">
                     {displayUser(e.user_id)}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground max-w-[180px] truncate">
+                    {e.project_id ? (projectNames[e.project_id] ?? e.project_id) : <span className="italic">unattributed</span>}
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline" className="text-xs font-mono">

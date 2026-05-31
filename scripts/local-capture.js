@@ -40,6 +40,20 @@ const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 let CODEX_SESSIONS_DIR = process.env.CODEX_SESSIONS_DIR || path.join(HOME, '.codex', 'sessions');
 let STATE_FILE = process.env.TOKENMAXX_LOCAL_STATE_FILE || path.join(HOME, '.config', 'tokenmaxx', 'local-state.json');
 
+// User's local timezone for date_local derivation. Defaults to MYT for Ben's MacBook.
+const USER_TIMEZONE = process.env.TOKENMAXX_USER_TIMEZONE || 'Asia/Kuala_Lumpur';
+
+// Convert an ISO UTC timestamp to a YYYY-MM-DD date in the given IANA timezone.
+function localDateInTz(isoUtc, tz) {
+  // en-CA renders as YYYY-MM-DD natively.
+  return new Date(isoUtc).toLocaleDateString('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+}
+
 // --- Supabase REST helper ---
 
 async function supabaseRequest(path_, method = 'GET', body = null, extraHeaders = {}) {
@@ -307,9 +321,10 @@ Environment:
       user_id: userId,
       captured_at: session.ts,
       date_utc: session.ts.slice(0, 10),
+      date_local: localDateInTz(session.ts, USER_TIMEZONE),
       provider: 'openai-codex',
       model: session.model,
-      capture_method: `openai-codex.ccusage.cli.ben-macbook`,
+      capture_method: `openai-codex.ccusage.cli.ben_macbook`,
       aggregation_grain: 'session',
       input_tokens: session.inputTokens,
       output_tokens: session.outputTokens,

@@ -41,6 +41,8 @@ export default async function RawPage() {
         models={filterOptions.models}
         userIds={filterOptions.userIds}
         userNames={Object.fromEntries(filterOptions.userNames)}
+        projectIds={filterOptions.projectIds}
+        projectNames={Object.fromEntries(filterOptions.projectNames)}
         usingSeedData={usingSeedData}
       />
     </div>

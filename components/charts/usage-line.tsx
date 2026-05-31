@@ -9,7 +9,7 @@ import {
   CartesianGrid,
   Tooltip,
 } from "recharts";
-import { formatTokens, formatCost } from "@/lib/utils";
+import { formatTokens, formatCost, formatTokensCompact, formatCostCompact } from "@/lib/utils";
 
 interface DataPoint {
   date: string;
@@ -51,8 +51,8 @@ export function UsageLineChart({
           tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
           tickFormatter={
             metric === "tokens"
-              ? (v: number) => formatTokens(v)
-              : (v: number) => formatCost(v)
+              ? (v: number) => formatTokensCompact(v)
+              : (v: number) => formatCostCompact(v)
           }
           width={52}
         />

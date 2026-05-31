@@ -6,7 +6,7 @@
  */
 
 import { getWrapStats } from "@/lib/data";
-import { formatTokens, formatCost, formatDateShort } from "@/lib/utils";
+import { formatTokens, formatCost, formatDateShort, formatTokensCompact } from "@/lib/utils";
 import {
   Card,
   CardContent,
@@ -74,9 +74,9 @@ export default async function WrapPage() {
               Total tokens
             </CardDescription>
           </CardHeader>
-          <CardContent className="px-4 pb-4">
-            <p className="text-3xl font-black tabular-nums leading-none">
-              {formatTokens(totalTokens)}
+          <CardContent className="px-4 pb-4 overflow-hidden">
+            <p className="text-3xl font-black tabular-nums leading-none truncate" title={formatTokens(totalTokens)}>
+              {formatTokensCompact(totalTokens)}
             </p>
             <p className="text-xs text-muted-foreground mt-1">generated in {year}</p>
           </CardContent>
@@ -88,8 +88,8 @@ export default async function WrapPage() {
               Total spend
             </CardDescription>
           </CardHeader>
-          <CardContent className="px-4 pb-4">
-            <p className="text-3xl font-black tabular-nums leading-none">
+          <CardContent className="px-4 pb-4 overflow-hidden">
+            <p className="text-3xl font-black tabular-nums leading-none truncate">
               {totalCost != null ? formatCost(totalCost) : "—"}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
@@ -104,8 +104,8 @@ export default async function WrapPage() {
               Total events
             </CardDescription>
           </CardHeader>
-          <CardContent className="px-4 pb-4">
-            <p className="text-3xl font-black tabular-nums leading-none">
+          <CardContent className="px-4 pb-4 overflow-hidden">
+            <p className="text-3xl font-black tabular-nums leading-none truncate">
               {totalEvents.toLocaleString()}
             </p>
             <p className="text-xs text-muted-foreground mt-1">API calls captured</p>
@@ -118,9 +118,9 @@ export default async function WrapPage() {
               Peak day
             </CardDescription>
           </CardHeader>
-          <CardContent className="px-4 pb-4">
-            <p className="text-3xl font-black tabular-nums leading-none">
-              {formatTokens(peakDayTokens)}
+          <CardContent className="px-4 pb-4 overflow-hidden">
+            <p className="text-3xl font-black tabular-nums leading-none truncate" title={formatTokens(peakDayTokens)}>
+              {formatTokensCompact(peakDayTokens)}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
               {peakDay ? formatDateShort(peakDay) : "—"}
