@@ -57,7 +57,25 @@ function SubscriptionCard({ sub }: { sub: SubscriptionSummary }) {
           {sub.monthly_cost_usd != null
             ? `${formatCost(sub.monthly_cost_usd)}/mo`
             : "Monthly cost unknown"}
+          {(sub as any).started_at && (
+            <span className="ml-2">· since {(sub as any).started_at}</span>
+          )}
         </p>
+        {Array.isArray((sub as any).management_urls) && (sub as any).management_urls.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {((sub as any).management_urls as { label: string; url: string }[]).map((l) => (
+              <a
+                key={l.url}
+                href={l.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs rounded-md border border-border px-2 py-1 hover:bg-muted"
+              >
+                {l.label} ↗
+              </a>
+            ))}
+          </div>
+        )}
       </CardHeader>
 
       <CardContent className="px-5 space-y-4">

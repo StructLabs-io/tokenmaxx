@@ -671,10 +671,12 @@ export async function getSubscriptionsSummary(): Promise<{
       provider: s.provider,
       plan_name: s.plan_name,
       monthly_cost_usd: s.monthly_cost_usd,
+      management_urls: s.management_urls ?? null,
+      started_at: s.started_at ?? null,
       tokens_30d: by30.get(s.provider)?.tokens ?? 0,
       cost_30d: by30.get(s.provider)?.cost ?? null,
       windows: windowResults.filter((w) => w.subscription_id === s.id),
-    }));
+    } as any));
 
     return { subscriptions, usingSeedData: false };
   } catch (err) {
@@ -717,7 +719,7 @@ export async function getQuotaWindowDetails(): Promise<{
     if (rpcErr) console.error("[fn_quota_window_details] falling back:", rpcErr);
 
     const [{ data: subs }, { data: rawWindows }] = await Promise.all([
-      supabase.from("subscriptions").select("id,provider,plan_name,monthly_cost_usd").eq("active", true) as unknown as Promise<{ data: any[] | null }>,
+      supabase.from("subscriptions").select("id,provider,plan_name,monthly_cost_usd,management_urls,started_at").eq("active", true) as unknown as Promise<{ data: any[] | null }>,
       supabase.from("quota_windows").select("id,subscription_id,window_label,window_type,window_hours,notes").eq("active", true) as unknown as Promise<{ data: any[] | null }>,
     ]);
 

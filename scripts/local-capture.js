@@ -187,12 +187,30 @@ function parseCodexSession(fpath) {
   let inputTokens = 0, outputTokens = 0, cachedTokens = 0;
   let usageEvents = 0, lastTotalUsage = null;
   let model = 'gpt-5.3-codex';
+  let firstUserPrompt = null;
 
   for (const line of lines) {
     if (!line.trim()) continue;
     try {
       const event = JSON.parse(line);
       if (event.type === 'session_meta' && event.payload) Object.assign(meta, event.payload);
+      // First user message text — used as session_title.
+      if (!firstUserPrompt && event.role === 'user' && typeof event.content === 'string') {
+        firstUserPrompt = event.content;
+      } else if (!firstUserPrompt && event.role === 'user' && Array.isArray(event.content)) {
+        for (const c of event.content) {
+          if (c && typeof c.text === 'string') { firstUserPrompt = c.text; break; }
+          else if (typeof c === 'string') { firstUserPrompt = c; break; }
+        }
+      } else if (!firstUserPrompt && event.payload && event.payload.role === 'user') {
+        const c = event.payload.content;
+        if (typeof c === 'string') firstUserPrompt = c;
+        else if (Array.isArray(c)) {
+          for (const item of c) {
+            if (item && typeof item.text === 'string') { firstUserPrompt = item.text; break; }
+          }
+        }
+      }
       if (event.model) model = event.model;
       if (event.payload && event.payload.model) model = event.payload.model;
       if (event.info && hasUsageTokens(event.info.total_token_usage)) {
@@ -218,6 +236,17 @@ function parseCodexSession(fpath) {
     ? new Date(meta.timestamp).toISOString()
     : new Date(fs.statSync(fpath).mtimeMs).toISOString();
 
+  // Trim title to 200 chars, strip environment_context wrappers.
+  let title = null;
+  if (firstUserPrompt) {
+    title = firstUserPrompt
+      .replace(/<environment_context>[\s\S]*?<\/environment_context>/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 200);
+    if (!title) title = null;
+  }
+
   return {
     ts,
     model,
@@ -226,6 +255,7 @@ function parseCodexSession(fpath) {
     cachedTokens,
     sessionId: meta.id || null,
     cwd: meta.cwd || null,
+    title,
   };
 }
 
@@ -380,6 +410,7 @@ Environment:
       capture_method: `openai-codex.ccusage.cli.${CAPTURE_CONTEXT}`,
       aggregation_grain: 'session',
       session_id: session.sessionId,
+      session_title: session.title,
       project_id: projectIdForCwd(session.cwd),
       input_tokens: session.inputTokens,
       output_tokens: session.outputTokens,

@@ -16,8 +16,10 @@ import {
   LogOut,
   Users,
   Github,
+  Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { AutoRefresh } from "@/components/nav/auto-refresh";
 
 const NAV_ITEMS = [
   {
@@ -70,6 +72,11 @@ const NAV_ITEMS = [
     label: "Users",
     icon: Users,
   },
+  {
+    href: "/settings",
+    label: "Settings",
+    icon: Settings,
+  },
 ];
 
 export function Sidebar() {
@@ -78,11 +85,14 @@ export function Sidebar() {
   return (
     <aside className="flex h-screen w-56 flex-col border-r border-border bg-sidebar">
       {/* Logo / wordmark */}
-      <div className="flex items-center gap-2 px-4 py-5 border-b border-sidebar-border">
-        <Zap className="h-5 w-5 text-primary" />
-        <span className="text-sm font-semibold tracking-tight text-sidebar-foreground">
-          Tokenmaxx
-        </span>
+      <div className="flex items-center justify-between px-4 py-5 border-b border-sidebar-border">
+        <div className="flex items-center gap-2">
+          <Zap className="h-5 w-5 text-primary" />
+          <span className="text-sm font-semibold tracking-tight text-sidebar-foreground">
+            Tokenmaxx
+          </span>
+        </div>
+        <AutoRefresh />
       </div>
 
       {/* Navigation */}
