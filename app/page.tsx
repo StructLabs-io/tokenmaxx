@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { QuotaSection } from "@/components/quota/quota-section";
-import { TokenTrendCard } from "@/components/dashboard/token-trend-card";
+import { DashboardTop } from "@/components/dashboard/dashboard-top";
 import type { DailyTotal } from "@/lib/supabase/types";
 import { LiveTicker } from "@/components/realtime/live-ticker";
 
@@ -75,68 +75,14 @@ export default async function DashboardPage() {
         }))}
       />
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Card className="gap-2 py-4">
-          <CardHeader className="px-4">
-            <CardDescription>Today&apos;s tokens</CardDescription>
-            <CardTitle className="text-2xl font-bold tabular-nums">
-              {formatTokens(today?.tokens ?? 0)}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-4">
-            <p className="text-xs text-muted-foreground">
-              {today?.cost != null ? formatCost(today.cost) : "$ pending"} cost
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="gap-2 py-4">
-          <CardHeader className="px-4">
-            <CardDescription>This week</CardDescription>
-            <CardTitle className="text-2xl font-bold tabular-nums">
-              {formatTokens(weekTokens)}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-4">
-            <p className="text-xs text-muted-foreground">
-              {weekCost != null ? formatCost(weekCost) : "$ pending"} cost
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="gap-2 py-4">
-          <CardHeader className="px-4">
-            <CardDescription>Total tokens ({stats.periodDays}d)</CardDescription>
-            <CardTitle className="text-2xl font-bold tabular-nums">
-              {formatTokens(totalTokens)}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-4">
-            <p className="text-xs text-muted-foreground">
-              {totalEvents.toLocaleString()} events
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="gap-2 py-4">
-          <CardHeader className="px-4">
-            <CardDescription>Total cost ({stats.periodDays}d)</CardDescription>
-            <CardTitle className="text-2xl font-bold tabular-nums">
-              {totalCost != null ? formatCost(totalCost) : "—"}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-4">
-            <p className="text-xs text-muted-foreground">
-              {totalCost == null ? "$ pending pricing data" : "USD"}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Usage trend — bar chart with 1D/3D/7D/14D/30D/Custom toggles */}
-      <TokenTrendCard
-        initialBuckets={chartData.map((d) => ({ label: d.date, tokens: d.tokens, cost: d.cost ?? 0 }))}
+      {/* Summary cards + trend chart — synced via DashboardTop (§2.4) */}
+      <DashboardTop
+        initialDays={stats.periodDays}
+        initialBuckets={chartData.map((d) => ({
+          label: d.date,
+          tokens: Number(d.tokens) || 0,
+          cost: Number(d.cost ?? 0) || 0,
+        }))}
       />
 
       {/* Top projects (now full-width since quota moved up) */}

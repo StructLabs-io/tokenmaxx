@@ -54,7 +54,7 @@ export function UsageBarChart({
           formatter={(value: number) => [formatTokens(value), "Tokens"]}
           cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }}
         />
-        <Bar dataKey="tokens" fill={color} radius={[3, 3, 0, 0]} />
+        <Bar dataKey="tokens" fill={color} radius={[3, 3, 0, 0]} minPointSize={2} isAnimationActive={false} />
       </BarChart>
     </ResponsiveContainer>
   );

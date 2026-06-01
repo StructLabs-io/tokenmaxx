@@ -72,9 +72,14 @@ export function TokenTrendCard({ initialBuckets }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range]);
 
-  const chartData = buckets.map((b) => ({ label: shortLabel(b.label, granularity), tokens: b.tokens }));
-  const totalTokens = buckets.reduce((s, b) => s + b.tokens, 0);
-  const totalCost = buckets.reduce((s, b) => s + b.cost, 0);
+  // Postgres bigint comes through as string; coerce numerics so recharts
+  // can plot them (otherwise axis renders but bars don't).
+  const chartData = buckets.map((b) => ({
+    label: shortLabel(b.label, granularity),
+    tokens: Number(b.tokens) || 0,
+  }));
+  const totalTokens = buckets.reduce((s, b) => s + (Number(b.tokens) || 0), 0);
+  const totalCost = buckets.reduce((s, b) => s + (Number(b.cost) || 0), 0);
 
   const title =
     range === "custom"
