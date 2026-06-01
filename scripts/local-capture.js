@@ -110,14 +110,14 @@ async function batchInsertEvents(rows, dryRun) {
   for (let i = 0; i < rows.length; i += BATCH) {
     const chunk = rows.slice(i, i + BATCH);
     try {
-      await supabaseRequest('usage_events', 'POST', chunk, {
-        // merge-duplicates = upsert against the unique constraint
-        // (workspace_id, user_id, capture_method, session_id, model, date_utc).
-        // Re-running the script with the same files updates totals if they
-        // changed; identical re-inserts are no-ops. Mirrors the ECIS
-        // upsert pattern.
-        Prefer: 'resolution=merge-duplicates,return=minimal',
-      });
+      await supabaseRequest(
+        // on_conflict targets the unique constraint columns directly so
+        // PostgREST upserts rather than rejecting with 409.
+        'usage_events?on_conflict=user_id,capture_method,session_id,model,date_utc',
+        'POST', chunk, {
+          Prefer: 'resolution=merge-duplicates,return=minimal',
+        },
+      );
       inserted += chunk.length;
     } catch (err) {
       console.error(`    FAIL batch (${chunk.length} rows): ${err.message}`);
@@ -218,7 +218,43 @@ function parseCodexSession(fpath) {
     ? new Date(meta.timestamp).toISOString()
     : new Date(fs.statSync(fpath).mtimeMs).toISOString();
 
-  return { ts, model, inputTokens, outputTokens, cachedTokens };
+  return {
+    ts,
+    model,
+    inputTokens,
+    outputTokens,
+    cachedTokens,
+    sessionId: meta.id || null,
+    cwd: meta.cwd || null,
+  };
+}
+
+// cwd → project_id map. Same rules as the v1 backfill script + the
+// reattribute-codex-buckets.js patterns. Adding new clients = add a rule.
+const PROJECT_BY_CWD_RULES = [
+  [/\/repos\/mantis(\/|$)/, 'd2572c4b-e862-46be-9153-e25a1cc2142b'],
+  [/\/Projects\/n9c-repo/, '891449c0-af2b-415d-af6a-ac7d3c9f4756'],
+  [/\/neuro9circuit-openclaw/, '891449c0-af2b-415d-af6a-ac7d3c9f4756'],
+  [/\/repos\/n9c-site/, '891449c0-af2b-415d-af6a-ac7d3c9f4756'],
+  [/\.codex\/worktrees\/[^/]+\/n9c-repo/, '891449c0-af2b-415d-af6a-ac7d3c9f4756'],
+  [/\/Omniventure_n8n/, '81e96884-7c9a-42c6-9372-fa916b9431ec'],
+  [/\/Clips23/, 'd42a649e-3a39-48be-abfd-0e75aefea0bd'],
+  [/\/Desktop\/Portfolio Profile Upgrade/, '13bc5073-a04d-4ffb-9ad4-0a9d3f12cce6'],
+  [/\/repos\/structlabsio(\/|$)/, '13bc5073-a04d-4ffb-9ad4-0a9d3f12cce6'],
+  [/\/structlabsio-variations/, '13bc5073-a04d-4ffb-9ad4-0a9d3f12cce6'],
+  [/\/repos\/wayang/, '15f798cd-f654-41bb-bcef-a7e1ccad7a33'],
+  [/\/Documents\/Ausmat QA/, '4e27b1c9-a687-43d2-880e-86412c62dec4'],
+  [/\/Documents\/Codex\/.+austmat/i, '4e27b1c9-a687-43d2-880e-86412c62dec4'],
+  [/\/Downloads\/WhatsApp Chat/, '4e27b1c9-a687-43d2-880e-86412c62dec4'],
+  [/\/Documents\/Auknowra Apps/, '2eb352f8-df4a-43a9-b3f4-35acd6e6d35c'],
+];
+
+function projectIdForCwd(cwd) {
+  if (!cwd) return null;
+  for (const [pattern, pid] of PROJECT_BY_CWD_RULES) {
+    if (pattern.test(cwd)) return pid;
+  }
+  return null;
 }
 
 // --- State helpers ---
@@ -343,6 +379,8 @@ Environment:
       model: session.model,
       capture_method: `openai-codex.ccusage.cli.${CAPTURE_CONTEXT}`,
       aggregation_grain: 'session',
+      session_id: session.sessionId,
+      project_id: projectIdForCwd(session.cwd),
       input_tokens: session.inputTokens,
       output_tokens: session.outputTokens,
       cache_creation_tokens: 0,
