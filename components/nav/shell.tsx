@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/nav/sidebar";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
@@ -15,6 +16,11 @@ const STORAGE_KEY = "tokenmaxx:sidebar-collapsed";
 export function LayoutShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const pathname = usePathname();
+  // Auth pages stand alone — no sidebar, no toggle.
+  if (pathname?.startsWith("/auth/")) {
+    return <main className="min-h-screen bg-background">{children}</main>;
+  }
 
   useEffect(() => {
     try {
