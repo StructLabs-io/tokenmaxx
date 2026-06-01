@@ -28,18 +28,32 @@ jobs:
 
       - run: npm run build:cf
 
+      # opennextjs-cloudflare's deploy uploads a new Worker version and
+      # binds triggers, but under wrangler 4.x with an API token it does
+      # NOT auto-promote that version to 100% traffic — the version sits
+      # as a draft and the active deployment stays on the previous one.
+      # (Works locally only because cached OAuth in ~/.wrangler carries
+      # implicit perms wrangler uses for promotion.) We capture the
+      # uploaded Version ID from the deploy output and explicitly promote
+      # it in a follow-up step.
       - name: Upload + bind triggers
-        run: npm run deploy
+        id: deploy
+        run: |
+          set -o pipefail
+          npm run deploy 2>&1 | tee /tmp/deploy.log
+          VERSION_ID=$(grep -oE 'Current Version ID: [a-f0-9-]+' /tmp/deploy.log | tail -1 | awk '{print $NF}')
+          if [ -z "$VERSION_ID" ]; then
+            echo "::error::could not parse Version ID from deploy output"
+            exit 1
+          fi
+          echo "version_id=$VERSION_ID" >> "$GITHUB_OUTPUT"
+          echo "uploaded version: $VERSION_ID"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      # opennextjs-cloudflare's deploy uploads a new version but does NOT
-      # auto-promote it to 100% traffic when running under an API token in
-      # wrangler 4.x (works locally with OAuth because OAuth has implicit
-      # additional perms). Explicit promotion step gets the new version live.
-      - name: Promote latest version to 100% traffic
-        run: npx wrangler versions deploy --x-versions latest --percentage 100 --yes
+      - name: Promote version to 100% traffic
+        run: npx wrangler versions deploy ${{ steps.deploy.outputs.version_id }} --percentage 100 --yes
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
