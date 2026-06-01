@@ -182,47 +182,55 @@ export default async function DashboardPage() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 {/* Claude column */}
                 {claude.length > 0 && (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 px-0.5">
-                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-[#cc785c] text-white text-xs font-bold">C</span>
-                      <span className="text-sm font-semibold">Anthropic Claude</span>
-                    </div>
-                    {claude.map((qw) => (
-                      <WindowCard
-                        key={qw.id}
-                        window={{
-                          id: qw.id, subscription_id: qw.subscription_id,
-                          window_label: qw.window_label, window_type: qw.window_type,
-                          window_hours: qw.window_hours, reset_anchor: null,
-                          active: true, notes: qw.notes,
-                          created_at: new Date(0).toISOString(),
-                        }}
-                        fillPct={qw.fillPct ?? null}
-                      />
-                    ))}
-                  </div>
+                  <Card>
+                    <CardHeader className="px-5 pt-4 pb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-[#cc785c] text-white text-sm font-bold">C</span>
+                        <CardTitle className="text-sm font-semibold">Anthropic Claude</CardTitle>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="px-5 pb-4 space-y-2">
+                      {claude.map((qw) => (
+                        <WindowCard
+                          key={qw.id}
+                          window={{
+                            id: qw.id, subscription_id: qw.subscription_id,
+                            window_label: qw.window_label, window_type: qw.window_type,
+                            window_hours: qw.window_hours, reset_anchor: null,
+                            active: true, notes: qw.notes,
+                            created_at: new Date(0).toISOString(),
+                          }}
+                          fillPct={qw.fillPct ?? null}
+                        />
+                      ))}
+                    </CardContent>
+                  </Card>
                 )}
                 {/* Codex column */}
                 {codex.length > 0 && (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 px-0.5">
-                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-black text-white text-xs font-bold">O</span>
-                      <span className="text-sm font-semibold">OpenAI Codex</span>
-                    </div>
-                    {codex.map((qw) => (
-                      <WindowCard
-                        key={qw.id}
-                        window={{
-                          id: qw.id, subscription_id: qw.subscription_id,
-                          window_label: qw.window_label, window_type: qw.window_type,
-                          window_hours: qw.window_hours, reset_anchor: null,
-                          active: true, notes: qw.notes,
-                          created_at: new Date(0).toISOString(),
-                        }}
-                        fillPct={qw.fillPct ?? null}
-                      />
-                    ))}
-                  </div>
+                  <Card>
+                    <CardHeader className="px-5 pt-4 pb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-black text-white text-sm font-bold">O</span>
+                        <CardTitle className="text-sm font-semibold">OpenAI Codex</CardTitle>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="px-5 pb-4 space-y-2">
+                      {codex.map((qw) => (
+                        <WindowCard
+                          key={qw.id}
+                          window={{
+                            id: qw.id, subscription_id: qw.subscription_id,
+                            window_label: qw.window_label, window_type: qw.window_type,
+                            window_hours: qw.window_hours, reset_anchor: null,
+                            active: true, notes: qw.notes,
+                            created_at: new Date(0).toISOString(),
+                          }}
+                          fillPct={qw.fillPct ?? null}
+                        />
+                      ))}
+                    </CardContent>
+                  </Card>
                 )}
               </div>
             </div>
