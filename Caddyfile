@@ -3,7 +3,7 @@
 
 tokenmaxx.structlabs.io {
     encode gzip zstd
-    reverse_proxy 127.0.0.1:3000
+    reverse_proxy 127.0.0.1:3001
     log {
         output file /var/log/caddy/tokenmaxx.log {
             roll_size 10mb
