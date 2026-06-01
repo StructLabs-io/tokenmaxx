@@ -5,12 +5,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { UsageBarChart } from "@/components/charts/usage-bar";
+import { UsageStackedBarChart } from "@/components/charts/usage-stacked-bar";
 import { formatCost, formatTokens } from "@/lib/utils";
-import { DEFAULT_PREFS, loadPrefs } from "@/lib/preferences";
+import { DEFAULT_PREFS, loadPrefs, savePrefs } from "@/lib/preferences";
 
 type Bucket = { label: string; tokens: number; cost: number };
-type Granularity = "hour" | "day";
+type Granularity = "hour" | "day" | "week" | "month";
 type Range = "1D" | "3D" | "7D" | "14D" | "30D" | "custom";
+
+const ALL_GRANULARITY_OPTIONS: { id: Granularity; label: string }[] = [
+  { id: "hour", label: "Hour" },
+  { id: "day", label: "Day" },
+  { id: "week", label: "Week" },
+  { id: "month", label: "Month" },
+];
 
 const QUICK_RANGES: { id: Exclude<Range, "custom">; days: number }[] = [
   { id: "1D", days: 1 }, { id: "3D", days: 3 }, { id: "7D", days: 7 },
@@ -45,6 +53,9 @@ export function DashboardTop({ initialBuckets, initialDays }: Props) {
   const [loading, setLoading] = useState(false);
   const [customFrom, setCustomFrom] = useState(daysAgoIso(30));
   const [customTo, setCustomTo] = useState(todayIso());
+  type Dim = "none" | "model" | "project" | "user" | "provider" | "source";
+  const [dimension, setDimension] = useState<Dim>("none");
+  const [stacked, setStacked] = useState<{ buckets: any[]; series: string[] } | null>(null);
 
   // Honour the user's default timeframe pref on first mount if they set one.
   useEffect(() => {
@@ -67,10 +78,26 @@ export function DashboardTop({ initialBuckets, initialDays }: Props) {
     if (range === "custom") return;
     const def = QUICK_RANGES.find((r) => r.id === range);
     if (!def) return;
-    if (range === `${initialDays}D` && buckets === initialBuckets && granularity === "day") return; // skip first render
-    load(`days=${def.days}`);
+    if (range === `${initialDays}D` && buckets === initialBuckets && granularity === "day" && dimension === "none") return;
+    const gq = `granularity=${granularity}`;
+    if (dimension === "none") {
+      setStacked(null);
+      load(`days=${def.days}&${gq}`);
+    } else {
+      loadStacked(`days=${def.days}&group_by=${dimension}&${gq}`);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range]);
+  }, [range, dimension, granularity]);
+
+  async function loadStacked(qs: string) {
+    setLoading(true);
+    try {
+      const r = await fetch(`/api/usage-trend?${qs}`, { cache: "no-store" });
+      const j = await r.json();
+      setStacked({ buckets: j.buckets ?? [], series: j.series ?? [] });
+      setGranularity(j.granularity ?? "day");
+    } finally { setLoading(false); }
+  }
 
   const totals = useMemo(() => {
     const tokens = buckets.reduce((s, b) => s + (Number(b.tokens) || 0), 0);
@@ -185,8 +212,49 @@ export function DashboardTop({ initialBuckets, initialDays }: Props) {
             </div>
           )}
         </CardHeader>
+        {/* §2.5 + §2.6 — granularity + dimension controls */}
+        <div className="px-6 pt-1 flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] uppercase tracking-wide text-muted-foreground mr-1">Bucket</span>
+            {ALL_GRANULARITY_OPTIONS.map((g) => {
+              const enabled = (loadPrefs().enabledGranularities ?? []).some((id) => id.includes(g.id));
+              if (!enabled && g.id !== "day" && g.id !== "hour") return null;
+              return (
+                <Button
+                  key={g.id}
+                  variant={granularity === g.id ? "default" : "outline"}
+                  size="sm"
+                  className="h-6 px-2 text-[11px]"
+                  onClick={() => setGranularity(g.id)}
+                  disabled={loading}
+                >
+                  {g.label}
+                </Button>
+              );
+            })}
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] uppercase tracking-wide text-muted-foreground mr-1">Stack by</span>
+            {(["none", "model", "project", "user", "provider", "source"] as const).map((d) => (
+              <Button
+                key={d}
+                variant={dimension === d ? "default" : "outline"}
+                size="sm"
+                className="h-6 px-2 text-[11px]"
+                onClick={() => { setDimension(d); savePrefs({ defaultDimension: d === "none" ? "model" : d }); }}
+                disabled={loading}
+              >
+                {d}
+              </Button>
+            ))}
+          </div>
+        </div>
         <CardContent className="px-6 pb-2">
-          <UsageBarChart data={chartData} height={180} />
+          {dimension === "none" || !stacked ? (
+            <UsageBarChart data={chartData} height={200} />
+          ) : (
+            <UsageStackedBarChart buckets={stacked.buckets} series={stacked.series} height={220} />
+          )}
         </CardContent>
       </Card>
     </>

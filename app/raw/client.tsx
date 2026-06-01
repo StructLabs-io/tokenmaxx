@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/table";
 import { Download, Search } from "lucide-react";
 import type { UsageEvent } from "@/lib/supabase/types";
+import { DataTable } from "@/components/ui/data-table";
 
 const PAGE_SIZE = 25;
 
@@ -220,36 +221,21 @@ export function RawClient({
         </Button>
       </div>
 
-      {/* Table */}
+      {/* TanStack DataTable — column sort + per-cell formatters */}
+      <DataTable
+        columns={rawColumns(projectNames, displayUser)}
+        data={filtered}
+        pageSize={25}
+      />
+
+      {/* Legacy table below — collapsed via false guard, kept for reference */}
+      {false && (
       <Card>
         <CardHeader className="px-6">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-medium">
               {filtered.length} events
             </CardTitle>
-            {pageCount > 1 && (
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page === 0}
-                  onClick={() => setPage((p) => p - 1)}
-                >
-                  Prev
-                </Button>
-                <span className="text-xs text-muted-foreground">
-                  {page + 1} / {pageCount}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page >= pageCount - 1}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  Next
-                </Button>
-              </div>
-            )}
           </div>
         </CardHeader>
         <CardContent className="px-0">
@@ -313,6 +299,81 @@ export function RawClient({
           </Table>
         </CardContent>
       </Card>
+      )}
     </>
   );
+}
+
+// Column definitions for the TanStack DataTable.
+function rawColumns(projectNames: Record<string, string>, displayUser: (id: string) => string): any[] {
+  return [
+    {
+      accessorKey: "captured_at",
+      header: "Time",
+      cell: (info: any) => (
+        <span className="text-muted-foreground text-xs whitespace-nowrap">
+          {new Date(info.getValue() as string).toLocaleDateString("en-US", {
+            month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+          })}
+        </span>
+      ),
+      sortingFn: "datetime",
+    },
+    {
+      accessorKey: "user_id",
+      header: "User",
+      cell: (info: any) => <span className="text-sm">{displayUser(info.getValue() as string)}</span>,
+    },
+    {
+      accessorKey: "project_id",
+      header: "Project",
+      cell: (info: any) => {
+        const pid = info.getValue() as string | null;
+        return pid
+          ? <span className="text-xs text-muted-foreground">{projectNames[pid] ?? pid}</span>
+          : <span className="italic text-xs text-muted-foreground">unattributed</span>;
+      },
+    },
+    {
+      accessorKey: "model",
+      header: "Model",
+      cell: (info: any) => (
+        <Badge variant="outline" className="text-xs font-mono">
+          {(info.getValue() as string).split("-").slice(0, 3).join("-")}
+        </Badge>
+      ),
+    },
+    {
+      accessorKey: "session_title",
+      header: "Session",
+      cell: (info: any) => {
+        const title = info.getValue() as string | null;
+        const cm = info.row.original.capture_method;
+        return title
+          ? <div className="max-w-[280px]"><p className="truncate text-xs">{title}</p><p className="text-[10px] text-muted-foreground truncate">{cm}</p></div>
+          : <span className="text-xs text-muted-foreground">{cm}</span>;
+      },
+    },
+    {
+      accessorKey: "input_tokens",
+      header: "Input",
+      cell: (info: any) => (
+        <span className="text-right tabular-nums text-xs">{(info.getValue() as number).toLocaleString()}</span>
+      ),
+    },
+    {
+      accessorKey: "output_tokens",
+      header: "Output",
+      cell: (info: any) => (
+        <span className="text-right tabular-nums text-xs">{(info.getValue() as number).toLocaleString()}</span>
+      ),
+    },
+    {
+      accessorKey: "cost_usd",
+      header: "Cost",
+      cell: (info: any) => (
+        <span className="text-right tabular-nums text-xs">{formatCost(info.getValue() as number | null)}</span>
+      ),
+    },
+  ];
 }

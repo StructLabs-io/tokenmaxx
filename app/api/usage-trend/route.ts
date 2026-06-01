@@ -32,9 +32,34 @@ export async function GET(req: NextRequest) {
   const from = params.get("from");
   const to = params.get("to");
   const daysParam = params.get("days");
+  const groupBy = params.get("group_by");
+  const granularityParam = params.get("granularity");
 
   try {
     const supabase = getSupabaseServerClient();
+
+    // §2.5/§2.6 — route both granularity and group_by through SQL RPCs.
+    if (groupBy || granularityParam) {
+      const days = clampInt(daysParam, 14, 1, 365);
+      const fromIso = from ? new Date(from + "T00:00:00Z").toISOString()
+                           : new Date(Date.now() - (days - 1) * 86400000).toISOString();
+      const toIso = to ? new Date(to + "T23:59:59Z").toISOString()
+                       : new Date().toISOString();
+      const gran = granularityParam ?? (days === 1 ? "hour" : "day");
+      if (groupBy) {
+        const { data, error } = await (supabase as any).rpc("fn_usage_buckets_grouped", {
+          p_from: fromIso, p_to: toIso, p_granularity: gran, p_group_by: groupBy,
+        });
+        if (error) return Response.json({ buckets: [], series: [], granularity: gran, error: String(error.message) }, { status: 500 });
+        return Response.json(data ?? { buckets: [], series: [], granularity: gran });
+      } else {
+        const { data, error } = await (supabase as any).rpc("fn_usage_buckets", {
+          p_from: fromIso, p_to: toIso, p_granularity: gran,
+        });
+        if (error) return Response.json({ buckets: [], granularity: gran, error: String(error.message) }, { status: 500 });
+        return Response.json(data ?? { buckets: [], granularity: gran });
+      }
+    }
 
     // Custom range path
     if (from && to) {
