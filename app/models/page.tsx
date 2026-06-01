@@ -9,14 +9,7 @@ import { getModelBreakdown } from "@/lib/data";
 import { formatTokens, formatCost } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { ModelsClient } from "./client";
 
 export const dynamic = "force-dynamic";
 
@@ -82,65 +75,8 @@ export default async function ModelsPage() {
         </Card>
       </div>
 
-      {/* Models table */}
-      <Card>
-        <CardHeader className="px-6">
-          <CardTitle className="text-sm font-medium">All models</CardTitle>
-        </CardHeader>
-        <CardContent className="px-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="pl-6">Provider</TableHead>
-                <TableHead>Model</TableHead>
-                <TableHead className="text-right">Events</TableHead>
-                <TableHead className="text-right">Input Tokens</TableHead>
-                <TableHead className="text-right">Output Tokens</TableHead>
-                <TableHead className="text-right">Total Tokens</TableHead>
-                <TableHead className="text-right pr-6">Cost (USD)</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {models.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="pl-6 text-muted-foreground text-sm">
-                    No model data for this period.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                models.map((row) => (
-                  <TableRow key={`${row.provider}__${row.model}`}>
-                    <TableCell className="pl-6">
-                      <Badge
-                        variant="outline"
-                        className={`text-xs font-normal ${providerBadgeClass(row.provider)}`}
-                      >
-                        {row.provider}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">{row.model}</TableCell>
-                    <TableCell className="text-right tabular-nums text-muted-foreground">
-                      {row.event_count.toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-muted-foreground">
-                      {formatTokens(row.input_tokens)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-muted-foreground">
-                      {formatTokens(row.output_tokens)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums font-medium">
-                      {formatTokens(row.total_tokens)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums pr-6">
-                      {row.cost_usd != null ? formatCost(row.cost_usd) : "—"}
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      {/* Models table — TanStack v8, column sort + global filter */}
+      <ModelsClient models={models} />
     </div>
   );
 }

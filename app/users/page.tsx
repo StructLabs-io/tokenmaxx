@@ -6,6 +6,7 @@
  */
 
 import { getUsersSummary } from "@/lib/data";
+import { UsersClient } from "./client";
 import { formatTokens, formatCost } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -75,70 +76,8 @@ export default async function UsersPage() {
         <CardHeader className="px-6">
           <CardTitle className="text-sm font-medium">All users</CardTitle>
         </CardHeader>
-        <CardContent className="px-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="pl-6">Name</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead className="hidden md:table-cell">Timezone</TableHead>
-                <TableHead className="text-right">Tokens (30d)</TableHead>
-                <TableHead className="text-right pr-6">Cost (30d)</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {users.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="pl-6 text-muted-foreground text-sm">
-                    No users found.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                users.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell className="pl-6">
-                      <div className="flex flex-col">
-                        <span className="font-medium">{user.display_name}</span>
-                        <span className="text-xs text-muted-foreground font-mono">
-                          {user.slug}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {user.account_type === "service" ? (
-                        <Badge
-                          variant="secondary"
-                          className="text-xs font-normal"
-                        >
-                          Service
-                        </Badge>
-                      ) : (
-                        <Badge
-                          variant="outline"
-                          className="text-xs font-normal bg-blue-500/10 text-blue-400 border-blue-500/30"
-                        >
-                          Human
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {user.email ?? <span className="text-muted-foreground/50">—</span>}
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
-                      {user.default_timezone}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums font-medium">
-                      {formatTokens(user.total_tokens)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums pr-6">
-                      {user.cost_usd != null ? formatCost(user.cost_usd) : "—"}
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+        <CardContent>
+          <UsersClient users={users} />
         </CardContent>
       </Card>
     </div>

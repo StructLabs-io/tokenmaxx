@@ -23,6 +23,17 @@ import {
 
 export { isServiceRoleConfigured };
 
+/**
+ * §11.4 — Demo mode. When NEXT_PUBLIC_TOKENMAXX_DEMO=1 is set, every
+ * data fetcher short-circuits to the deterministic fictional dataset
+ * shipped in /demo. Used for the public-repo deploy at
+ * tokenmaxx-demo.structlabs.io so anyone can poke around without seeing
+ * Ben's real numbers.
+ */
+export function isDemoMode(): boolean {
+  return process.env.NEXT_PUBLIC_TOKENMAXX_DEMO === "1";
+}
+
 // ---------------------------------------------------------------------------
 // Pagination helper
 // ---------------------------------------------------------------------------

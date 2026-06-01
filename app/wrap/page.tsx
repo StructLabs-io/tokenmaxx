@@ -18,8 +18,24 @@ import { UsageBarChart } from "@/components/charts/usage-bar";
 
 export const dynamic = "force-dynamic";
 
-export default async function WrapPage() {
-  const stats = await getWrapStats();
+async function getPeriodStats(period: "year" | "month" | "week") {
+  try {
+    const { getSupabaseServerClient, isServiceRoleConfigured } = await import("@/lib/supabase/client");
+    if (!isServiceRoleConfigured()) return null;
+    const sb = getSupabaseServerClient();
+    const { data, error } = await (sb as any).rpc("fn_wrap_period_stats", { p_period: period });
+    if (error) return null;
+    return data;
+  } catch { return null; }
+}
+
+export default async function WrapPage({ searchParams }: { searchParams?: Promise<{ period?: string }> }) {
+  const sp = (await searchParams) ?? {};
+  const period = (sp.period === "month" || sp.period === "week" ? sp.period : "year") as "year" | "month" | "week";
+  const [stats, periodStats] = await Promise.all([
+    getWrapStats(),
+    period === "year" ? Promise.resolve(null) : getPeriodStats(period),
+  ]);
 
   if (!stats) {
     return (
@@ -66,15 +82,51 @@ export default async function WrapPage() {
             Your AI usage — year to date
           </p>
         </div>
-        {/* §9.2 — period toggle. Currently shows YTD; month/week views to wire
-            after we agree on the slice (calendar month/week per OQ #9 = yes).
-            These links navigate to the dashboard which has the underlying data. */}
+        {/* §9.2 — calendar-month / calendar-week views (per OQ #9). */}
         <div className="inline-flex rounded-md border border-border p-0.5 text-xs bg-muted/40">
-          <span className="px-2.5 py-1 rounded bg-background shadow-sm">YTD</span>
-          <a href="/?range=30D" className="px-2.5 py-1 rounded text-muted-foreground hover:text-foreground">This month</a>
-          <a href="/?range=7D" className="px-2.5 py-1 rounded text-muted-foreground hover:text-foreground">This week</a>
+          {(["year", "month", "week"] as const).map((p) => (
+            <a
+              key={p}
+              href={p === "year" ? "/wrap" : `/wrap?period=${p}`}
+              className={
+                period === p
+                  ? "px-2.5 py-1 rounded bg-background shadow-sm"
+                  : "px-2.5 py-1 rounded text-muted-foreground hover:text-foreground"
+              }
+            >
+              {p === "year" ? "YTD" : p === "month" ? "This month" : "This week"}
+            </a>
+          ))}
         </div>
       </div>
+
+      {periodStats && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="px-5 py-4">
+            <div className="text-xs text-muted-foreground mb-2">
+              {periodStats.from_date} → {periodStats.to_date} (calendar {period})
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div>
+                <div className="text-xs text-muted-foreground">Tokens</div>
+                <div className="text-xl font-semibold tabular-nums">{formatTokens(Number(periodStats.totalTokens) || 0)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Cost</div>
+                <div className="text-xl font-semibold tabular-nums">{periodStats.totalCost != null ? formatCost(Number(periodStats.totalCost)) : "—"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Events</div>
+                <div className="text-xl font-semibold tabular-nums">{Number(periodStats.totalEvents).toLocaleString()}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Top model</div>
+                <div className="text-sm font-medium font-mono truncate">{periodStats.topModel ?? "—"}</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Hero stats row */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
