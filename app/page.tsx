@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { WindowCard } from "@/components/quota/window-card";
-import { UsageLineChart } from "@/components/charts/usage-line";
+import { TokenTrendCard } from "@/components/dashboard/token-trend-card";
 import type { DailyTotal } from "@/lib/supabase/types";
 import { LiveTicker } from "@/components/realtime/live-ticker";
 
@@ -119,17 +119,10 @@ export default async function DashboardPage() {
         </Card>
       </div>
 
-      {/* Usage sparkline */}
-      <Card>
-        <CardHeader className="px-6">
-          <CardTitle className="text-sm font-medium">
-            {stats.periodDays}-day token trend
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="px-6 pb-2">
-          <UsageLineChart data={chartData} metric="tokens" height={180} />
-        </CardContent>
-      </Card>
+      {/* Usage trend — bar chart with 1D/3D/7D/14D/30D/Custom toggles */}
+      <TokenTrendCard
+        initialBuckets={chartData.map((d) => ({ label: d.date, tokens: d.tokens, cost: d.cost ?? 0 }))}
+      />
 
       {/* Bottom row: top projects + quota windows */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -166,36 +159,75 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Quota windows — live from quota_observations */}
-        {quotaWindows.length > 0 && (
-          <div className="space-y-3">
-            <h2 className="text-sm font-medium px-0.5">Quota windows</h2>
-            {quotaWindows.some((w) => w.provider === "openai-codex") && (
-              <p className="text-xs text-muted-foreground rounded border border-border bg-muted/40 px-3 py-1.5">
-                Codex quota polled via session cookie — refresh <code className="font-mono text-[11px]">CHATGPT_SESSION_TOKEN_0/1</code> in <code className="font-mono text-[11px]">shared/.env</code> if data goes stale.
-              </p>
-            )}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {quotaWindows.map((qw) => (
-                <WindowCard
-                  key={qw.id}
-                  window={{
-                    id: qw.id,
-                    subscription_id: qw.subscription_id,
-                    window_label: qw.window_label,
-                    window_type: qw.window_type,
-                    window_hours: qw.window_hours,
-                    reset_anchor: null,
-                    active: true,
-                    notes: qw.notes,
-                    created_at: new Date(0).toISOString(),
-                  }}
-                  fillPct={qw.fillPct ?? null}
-                />
-              ))}
+        {/* Quota windows — Claude left, Codex right, live from quota_observations */}
+        {quotaWindows.length > 0 && (() => {
+          const claude = quotaWindows.filter((w) => w.provider === "anthropic");
+          const codex = quotaWindows.filter((w) => w.provider === "openai-codex");
+          // Stale = no observation OR last observation > 90 min old (cron is 30 min)
+          const STALE_MS = 90 * 60 * 1000;
+          const isStale = (ws: typeof codex) =>
+            ws.length > 0 && ws.some((w) =>
+              w.latest_observed_at == null ||
+              Date.now() - new Date(w.latest_observed_at).getTime() > STALE_MS,
+            );
+          const codexStale = isStale(codex);
+          return (
+            <div className="space-y-3">
+              <h2 className="text-sm font-medium px-0.5">Quota windows</h2>
+              {codexStale && (
+                <p className="text-xs rounded border border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-300 px-3 py-1.5">
+                  ⚠ Codex quota data is stale. Refresh <code className="font-mono text-[11px]">CHATGPT_SESSION_TOKEN_0/1</code> in <code className="font-mono text-[11px]">shared/.env</code>.
+                </p>
+              )}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {/* Claude column */}
+                {claude.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 px-0.5">
+                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-[#cc785c] text-white text-xs font-bold">C</span>
+                      <span className="text-sm font-semibold">Anthropic Claude</span>
+                    </div>
+                    {claude.map((qw) => (
+                      <WindowCard
+                        key={qw.id}
+                        window={{
+                          id: qw.id, subscription_id: qw.subscription_id,
+                          window_label: qw.window_label, window_type: qw.window_type,
+                          window_hours: qw.window_hours, reset_anchor: null,
+                          active: true, notes: qw.notes,
+                          created_at: new Date(0).toISOString(),
+                        }}
+                        fillPct={qw.fillPct ?? null}
+                      />
+                    ))}
+                  </div>
+                )}
+                {/* Codex column */}
+                {codex.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 px-0.5">
+                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-black text-white text-xs font-bold">O</span>
+                      <span className="text-sm font-semibold">OpenAI Codex</span>
+                    </div>
+                    {codex.map((qw) => (
+                      <WindowCard
+                        key={qw.id}
+                        window={{
+                          id: qw.id, subscription_id: qw.subscription_id,
+                          window_label: qw.window_label, window_type: qw.window_type,
+                          window_hours: qw.window_hours, reset_anchor: null,
+                          active: true, notes: qw.notes,
+                          created_at: new Date(0).toISOString(),
+                        }}
+                        fillPct={qw.fillPct ?? null}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
     </div>
   );

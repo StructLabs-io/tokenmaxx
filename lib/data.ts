@@ -663,6 +663,8 @@ export interface QuotaWindowDetail extends QuotaWindowWithUsage {
   ms_until_reset: number | null;
   /** Latest percent_used from quota_observations (0-100); null if no observations yet */
   fillPct: number | null;
+  /** ISO timestamp of latest quota observation (for staleness detection) */
+  latest_observed_at: string | null;
 }
 
 export async function getQuotaWindowDetails(): Promise<{
@@ -692,6 +694,7 @@ export async function getQuotaWindowDetails(): Promise<{
           monthly_cost_usd: sub.monthly_cost_usd,
           ms_until_reset,
           fillPct: null,
+          latest_observed_at: null,
         };
       })
     );
@@ -707,17 +710,19 @@ export async function getQuotaWindowDetails(): Promise<{
         .order("observed_at", { ascending: false }) as { data: { quota_window_id: number; percent_used: number | null; observed_at: string }[] | null };
 
       if (observations && observations.length > 0) {
-        const latestByWindow = new Map<number, number | null>();
+        const latestByWindow = new Map<number, { pct: number | null; observed_at: string }>();
         for (const obs of observations) {
           if (!latestByWindow.has(obs.quota_window_id)) {
             // percent_used is 0-100 in DB; WindowCard expects 0-1
             const pct = obs.percent_used != null ? obs.percent_used / 100 : null;
-            latestByWindow.set(obs.quota_window_id, pct);
+            latestByWindow.set(obs.quota_window_id, { pct, observed_at: obs.observed_at });
           }
         }
         for (const w of windows) {
-          if (latestByWindow.has(w.id)) {
-            w.fillPct = latestByWindow.get(w.id) ?? null;
+          const latest = latestByWindow.get(w.id);
+          if (latest) {
+            w.fillPct = latest.pct;
+            w.latest_observed_at = latest.observed_at;
           }
         }
       }
