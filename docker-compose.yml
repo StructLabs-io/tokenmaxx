@@ -12,7 +12,7 @@ services:
     env_file:
       - /root/.config/tokenmaxx/web.env
     ports:
-      - "127.0.0.1:3001:3000"   # bind to loopback; Caddy proxies in (host 3001 to avoid MANTIS on 3000)
+      - "127.0.0.1:3030:3000"   # bind to loopback; Caddy proxies in (3000 = MANTIS, 3001 = other)
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
       interval: 30s
