@@ -260,7 +260,7 @@ export function RawClient({
                 <TableHead>User</TableHead>
                 <TableHead>Project</TableHead>
                 <TableHead>Model</TableHead>
-                <TableHead>Capture method</TableHead>
+                <TableHead>Session</TableHead>
                 <TableHead className="text-right">Input</TableHead>
                 <TableHead className="text-right">Output</TableHead>
                 <TableHead className="text-right pr-6">Cost</TableHead>
@@ -288,8 +288,15 @@ export function RawClient({
                       {e.model.split("-").slice(0, 3).join("-")}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-xs text-muted-foreground max-w-[180px] truncate">
-                    {e.capture_method}
+                  <TableCell className="text-xs max-w-[280px]" title={(e as any).session_title ?? e.capture_method}>
+                    {(e as any).session_title ? (
+                      <div>
+                        <p className="truncate text-foreground/80">{(e as any).session_title}</p>
+                        <p className="text-[10px] text-muted-foreground truncate">{e.capture_method}</p>
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">{e.capture_method}</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-xs">
                     {e.input_tokens.toLocaleString()}
