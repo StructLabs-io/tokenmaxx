@@ -28,8 +28,18 @@ jobs:
 
       - run: npm run build:cf
 
-      - name: Deploy to Cloudflare
+      - name: Upload + bind triggers
         run: npm run deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # opennextjs-cloudflare's deploy uploads a new version but does NOT
+      # auto-promote it to 100% traffic when running under an API token in
+      # wrangler 4.x (works locally with OAuth because OAuth has implicit
+      # additional perms). Explicit promotion step gets the new version live.
+      - name: Promote latest version to 100% traffic
+        run: npx wrangler versions deploy --x-versions latest --percentage 100 --yes
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
