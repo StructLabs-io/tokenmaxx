@@ -676,7 +676,40 @@ export async function getQuotaWindowDetails(): Promise<{
   }
 
   try {
-    const { subscriptions, usingSeedData } = await getSubscriptionsSummary();
+    // Direct subscription + window fetch — no event aggregation needed for
+    // the dashboard's quota row. The full per-provider 30d totals live in
+    // getSubscriptionsSummary() which the /subscriptions page uses.
+    // Keeping this path small avoids blowing the Cloudflare Workers
+    // 50-subrequest/request limit (see fetchAll usage elsewhere).
+    const supabase = getSupabaseServerClient();
+    const [{ data: subs }, { data: rawWindows }] = await Promise.all([
+      supabase.from("subscriptions").select("id,provider,plan_name,monthly_cost_usd").eq("active", true) as unknown as Promise<{ data: any[] | null }>,
+      supabase.from("quota_windows").select("id,subscription_id,window_label,window_type,window_hours,notes").eq("active", true) as unknown as Promise<{ data: any[] | null }>,
+    ]);
+
+    if (!subs || !rawWindows) return { windows: [], usingSeedData: false };
+    const subById = new Map<string, any>(subs.map((s) => [s.id, s]));
+
+    const subscriptions = subs.map((s) => ({
+      id: s.id,
+      provider: s.provider,
+      plan_name: s.plan_name,
+      monthly_cost_usd: s.monthly_cost_usd,
+      windows: rawWindows
+        .filter((w) => w.subscription_id === s.id)
+        .map((w) => ({
+          id: w.id,
+          subscription_id: w.subscription_id,
+          window_label: w.window_label,
+          window_type: w.window_type,
+          window_hours: w.window_hours,
+          tokens_in_window: 0,
+          notes: w.notes,
+        })),
+    }));
+    void subById;
+
+    const usingSeedData = false;
     if (!subscriptions.length) return { windows: [], usingSeedData };
 
     const now = Date.now();
