@@ -1,4 +1,4 @@
-// open-next.config.ts — created for Tokenmaxx v0.1 (seed-data only, no R2 cache)
+// open-next.config.ts — created for TokenMaxx v0.1 (seed-data only, no R2 cache)
 import { defineCloudflareConfig } from "@opennextjs/cloudflare";
 // import r2IncrementalCache from "@opennextjs/cloudflare/overrides/incremental-cache/r2-incremental-cache";
 

@@ -13,7 +13,7 @@
 
 ---
 
-This guide is written for an AI agent (Claude Code, Codex, or similar) setting up Tokenmaxx on behalf of a human.
+This guide is written for an AI agent (Claude Code, Codex, or similar) setting up TokenMaxx on behalf of a human.
 
 **Read [SETUP-HUMAN.md](SETUP-HUMAN.md) first.** The human must complete those steps and have `.env.local` ready before you start.
 

@@ -1,4 +1,4 @@
-# Tokenmaxx Pipeline Cron Setup
+# TokenMaxx Pipeline Cron Setup
 
 ## Scripts overview
 
@@ -33,7 +33,7 @@ TOKENMAXX_USER_SLUG=ben-macbook          # or openclaw-server
 Add via `crontab -e`:
 
 ```cron
-# Tokenmaxx — local capture (runs once daily at 23:45 local time)
+# TokenMaxx — local capture (runs once daily at 23:45 local time)
 45 23 * * * cd /Users/benauknowra/Projects/public/tokenmaxx && \
   SUPABASE_URL=<prod_url> \
   SUPABASE_SERVICE_ROLE_KEY=<service_role_key> \
@@ -41,13 +41,13 @@ Add via `crontab -e`:
   TOKENMAXX_USER_SLUG=ben-macbook \
   node scripts/local-capture.js >> /tmp/tokenmaxx-local-capture.log 2>&1
 
-# Tokenmaxx — fx rate (runs at 23:50 daily)
+# TokenMaxx — fx rate (runs at 23:50 daily)
 50 23 * * * cd /Users/benauknowra/Projects/public/tokenmaxx && \
   SUPABASE_URL=<prod_url> \
   SUPABASE_SERVICE_ROLE_KEY=<service_role_key> \
   node scripts/fx-rate.js >> /tmp/tokenmaxx-fx-rate.log 2>&1
 
-# Tokenmaxx — pricing pull (runs weekly on Sunday at 23:55)
+# TokenMaxx — pricing pull (runs weekly on Sunday at 23:55)
 55 23 * * 0 cd /Users/benauknowra/Projects/public/tokenmaxx && \
   SUPABASE_URL=<prod_url> \
   SUPABASE_SERVICE_ROLE_KEY=<service_role_key> \
@@ -61,7 +61,7 @@ Replace `<prod_url>`, `<service_role_key>`, `<workspace_uuid>` with values from 
 SSH to n9c server, then `crontab -e`:
 
 ```cron
-# Tokenmaxx — server capture (runs daily at 00:05 UTC, after midnight cron runs complete)
+# TokenMaxx — server capture (runs daily at 00:05 UTC, after midnight cron runs complete)
 5 0 * * * cd /home/openclaw/scripts/tokenmaxx && \
   SUPABASE_URL=<prod_url> \
   SUPABASE_SERVICE_ROLE_KEY=<service_role_key> \
@@ -69,13 +69,13 @@ SSH to n9c server, then `crontab -e`:
   TOKENMAXX_USER_SLUG=openclaw-server \
   node server-capture.js >> /home/openclaw/logs/tokenmaxx-server-capture.log 2>&1
 
-# Tokenmaxx — fx rate (runs daily at 00:10 UTC)
+# TokenMaxx — fx rate (runs daily at 00:10 UTC)
 10 0 * * * cd /home/openclaw/scripts/tokenmaxx && \
   SUPABASE_URL=<prod_url> \
   SUPABASE_SERVICE_ROLE_KEY=<service_role_key> \
   node fx-rate.js >> /home/openclaw/logs/tokenmaxx-fx-rate.log 2>&1
 
-# Tokenmaxx — pricing pull (runs weekly on Monday at 00:15 UTC)
+# TokenMaxx — pricing pull (runs weekly on Monday at 00:15 UTC)
 15 0 * * 1 cd /home/openclaw/scripts/tokenmaxx && \
   SUPABASE_URL=<prod_url> \
   SUPABASE_SERVICE_ROLE_KEY=<service_role_key> \
@@ -113,7 +113,7 @@ SSH to n9c server, then `crontab -e`:
 Add to MacBook crontab via `crontab -e`:
 
 ```cron
-# Tokenmaxx — quota tier 1 (Code Meter widget, every 15 min)
+# TokenMaxx — quota tier 1 (Code Meter widget, every 15 min)
 */15 * * * * cd /Users/benauknowra/Projects/public/tokenmaxx && \
   SUPABASE_URL=<prod_url> \
   SUPABASE_SERVICE_ROLE_KEY=<service_role_key> \
@@ -128,7 +128,7 @@ Reads cookies directly from Brave's on-disk profile — no manual session key co
 no browser needs to be open. Requires `CLAUDE_ORG_ID` in environment.
 
 ```cron
-# Tokenmaxx — quota tier 2 (claude.ai API via Brave cookies, every 15 min)
+# TokenMaxx — quota tier 2 (claude.ai API via Brave cookies, every 15 min)
 */15 * * * * cd /Users/benauknowra/Projects/public/tokenmaxx && \
   SUPABASE_URL=<prod_url> \
   SUPABASE_SERVICE_ROLE_KEY=<service_role_key> \
@@ -157,7 +157,7 @@ Reads cookies from Brave for openai.com and probes known platform endpoints for 
 Non-fatal — exits 0 if no session found or endpoint not yet discovered.
 
 ```cron
-# Tokenmaxx — quota codex (OpenAI Codex Pro quota, every 15 min)
+# TokenMaxx — quota codex (OpenAI Codex Pro quota, every 15 min)
 */15 * * * * cd /Users/benauknowra/Projects/public/tokenmaxx && \
   SUPABASE_URL=<prod_url> \
   SUPABASE_SERVICE_ROLE_KEY=<service_role_key> \

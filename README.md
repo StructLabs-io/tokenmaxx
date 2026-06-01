@@ -1,4 +1,4 @@
-# Tokenmaxx
+# TokenMaxx
 
 Track what your AI subscriptions actually cost — by project, by model, by day.
 
@@ -8,7 +8,7 @@ Track what your AI subscriptions actually cost — by project, by model, by day.
 
 ## What is this?
 
-Tokenmaxx captures token usage from Claude Code and Codex CLI, stores it in your own Supabase database, and gives you a dashboard that breaks down AI spend by project, model, and day. Your data stays in your own Supabase project — no SaaS account required.
+TokenMaxx captures token usage from Claude Code and Codex CLI, stores it in your own Supabase database, and gives you a dashboard that breaks down AI spend by project, model, and day. Your data stays in your own Supabase project — no SaaS account required.
 
 **Status: v1.0, live.** The dashboard is deployed at [tokenmaxx.structlabs.io](https://tokenmaxx.structlabs.io) with Supabase auth, live usage data, subscription tracking, and automated quota capture via Brave browser session cookies.
 
@@ -16,11 +16,11 @@ Tokenmaxx captures token usage from Claude Code and Codex CLI, stores it in your
 
 ## Getting started
 
-There are two ways to set up Tokenmaxx, depending on what you want.
+There are two ways to set up TokenMaxx, depending on what you want.
 
 ### Try it locally
 
-For evaluating Tokenmaxx, contributing, or playing with the dashboard. Runs entirely on your laptop with a local Postgres. No Supabase or Cloudflare account needed.
+For evaluating TokenMaxx, contributing, or playing with the dashboard. Runs entirely on your laptop with a local Postgres. No Supabase or Cloudflare account needed.
 
 [docs/SETUP-LOCAL-DEV.md](docs/SETUP-LOCAL-DEV.md)
 
@@ -31,7 +31,7 @@ For tracking your actual AI subscription usage day-to-day. Uses real Supabase + 
 Most of the setup is automated by your AI agent. You only need to do a few one-time manual things:
 
 1. [Sign up for accounts and paste secrets into `.env.local`](docs/SETUP-HUMAN.md) (~5 min)
-2. Then tell your AI agent: "set up Tokenmaxx per `docs/SETUP-AGENT.md`"
+2. Then tell your AI agent: "set up TokenMaxx per `docs/SETUP-AGENT.md`"
 
 Humans start here: [docs/SETUP-HUMAN.md](docs/SETUP-HUMAN.md)
 

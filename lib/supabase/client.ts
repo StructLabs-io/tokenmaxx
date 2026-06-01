@@ -1,5 +1,5 @@
 /**
- * Supabase clients for Tokenmaxx.
+ * Supabase clients for TokenMaxx.
  *
  * Two clients:
  *   getSupabaseClient()       -- browser-safe, anon key, for future auth'd reads

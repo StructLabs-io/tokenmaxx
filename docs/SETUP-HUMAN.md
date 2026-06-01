@@ -97,7 +97,7 @@ Your agent will configure the rest.
 
 You're done. Tell your agent:
 
-> "Set up Tokenmaxx. Follow `docs/SETUP-AGENT.md`. My `.env.local` is ready."
+> "Set up TokenMaxx. Follow `docs/SETUP-AGENT.md`. My `.env.local` is ready."
 
 Your agent will provision the Supabase project, apply the schema, configure capture cron, deploy the dashboard, and report back the URL.
 

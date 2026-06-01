@@ -51,7 +51,7 @@ Auth, subscriptions, quota capture, users, project management UI, reconciliation
 
 Approved by Human, 2026-05-29.
 
-Initial public scaffold for Tokenmaxx v0.1 MVP.
+Initial public scaffold for TokenMaxx v0.1 MVP.
 
 ### Added
 

@@ -1,4 +1,4 @@
-/* Tokenmaxx theme: sunset
+/* TokenMaxx theme: sunset
    Generated from Claude Designs export at /tmp/tokenmaxx-themes/sunset/colors_and_type.css
    Transformation: :root -> [data-theme="sunset"]
                    .dark -> [data-theme="sunset"].dark
@@ -8,7 +8,7 @@
 
 /* ============================================================================
    TOKENMAXX — SUNSET THEME
-   Design tokens: color + type for the Tokenmaxx AI-usage dashboard.
+   Design tokens: color + type for the TokenMaxx AI-usage dashboard.
 
    Theme: "Sunset" — warm golden-hour mood.
      • Light  = warm amber / coral / peach   (daytime golden hour)
@@ -22,7 +22,7 @@
    Mirrors StructLabs-io/tokenmaxx app/globals.css structure (Tailwind v4 HSL).
    ========================================================================== */
 
-/* Geist Sans + Geist Mono — the real Tokenmaxx fonts, served from Google Fonts. */
+/* Geist Sans + Geist Mono — the real TokenMaxx fonts, served from Google Fonts. */
 @import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800;900&family=Geist+Mono:wght@400;500;600&display=swap');
 
 /* ----------------------------------------------------------------------------

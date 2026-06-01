@@ -1,5 +1,5 @@
 /**
- * daily-digest -- Tokenmaxx daily Telegram digest
+ * daily-digest -- TokenMaxx daily Telegram digest
  *
  * Message structure:
  *   ── Last 24 hours ──  (yesterday)
@@ -88,7 +88,7 @@ type EventRow = {
 };
 
 /**
- * Tokenmaxx events all live under one workspace (per current design), so
+ * TokenMaxx events all live under one workspace (per current design), so
  * MacBook vs Server is encoded in the capture_method 4th segment instead:
  *   *.ben_macbook         -> MacBook (current local-capture)
  *   *.openclaw / *.server -> Server (server-capture)
@@ -195,7 +195,7 @@ Deno.serve(async (_req: Request) => {
     const events7d = allEvents.filter((e) => e.date_utc >= sevenDayStart && e.date_utc <= dateStr);
 
     if (events24h.length === 0) {
-      const text = `📊 <b>Tokenmaxx — ${fmtDate(dateStr)}</b>\n\nNo usage captured for this date.`;
+      const text = `📊 <b>TokenMaxx — ${fmtDate(dateStr)}</b>\n\nNo usage captured for this date.`;
       await sendTelegram(text);
       return new Response(JSON.stringify({ ok: true, date: dateStr, events: 0 }), {
         status: 200, headers: { 'Content-Type': 'application/json' },
@@ -308,7 +308,7 @@ Deno.serve(async (_req: Request) => {
     const deltaSign = deltaPct >= 0 ? '+' : '';
 
     const lines: string[] = [
-      `📊 <b>Tokenmaxx — ${fmtDate(dateStr)}</b>`,
+      `📊 <b>TokenMaxx — ${fmtDate(dateStr)}</b>`,
       '',
       '── Last 24 hours ──',
       `⚡ ${fmtTokens(tokens24h)} tokens | ${events24h.length.toLocaleString()} events`,

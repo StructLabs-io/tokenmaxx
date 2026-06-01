@@ -1,4 +1,4 @@
-# Tokenmaxx
+# TokenMaxx
 
 **Version:** v0.1
 **Status:** Approved (v0.1)
@@ -18,7 +18,7 @@ Track what your AI subscriptions actually cost — by project, by model, by day.
 
 ## What it does
 
-Tokenmaxx captures token usage from Claude Code, Codex CLI, and other AI developer tools, stores it in your own Supabase database, and gives you a dashboard that answers:
+TokenMaxx captures token usage from Claude Code, Codex CLI, and other AI developer tools, stores it in your own Supabase database, and gives you a dashboard that answers:
 
 - How much did I spend on AI this week, broken down by project?
 - Which model (Opus, Sonnet, Haiku) is eating most of my budget?
@@ -91,7 +91,7 @@ Telegram
 
 ## Self-hosting
 
-Tokenmaxx is designed to be self-hosted. Each user or team runs their own Supabase project. There is no hosted SaaS version.
+TokenMaxx is designed to be self-hosted. Each user or team runs their own Supabase project. There is no hosted SaaS version.
 
 See [SETUP-HUMAN.md](SETUP-HUMAN.md) for what you need to do yourself, and [SETUP-AGENT.md](SETUP-AGENT.md) for what your AI agent can do once you've completed the prerequisites.
 

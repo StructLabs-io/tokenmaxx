@@ -12,7 +12,7 @@
 
 ---
 
-Tokenmaxx is an early-stage project. Contributions are welcome — please read this first.
+TokenMaxx is an early-stage project. Contributions are welcome — please read this first.
 
 ---
 

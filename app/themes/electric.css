@@ -1,4 +1,4 @@
-/* Tokenmaxx theme: electric
+/* TokenMaxx theme: electric
    Generated from Claude Designs export at /tmp/tokenmaxx-themes/electric/colors_and_type.css
    Transformation: :root -> [data-theme="electric"]
                    .dark -> [data-theme="electric"].dark
@@ -8,7 +8,7 @@
 
 /* ============================================================================
    TOKENMAXX — "Electric" Theme
-   Design tokens for the Tokenmaxx AI usage-tracking dashboard.
+   Design tokens for the TokenMaxx AI usage-tracking dashboard.
    Dark mode only. Stack: Next.js 15 + shadcn/ui + Tailwind v4, HSL CSS vars.
 
    HSL triplets (no hsl() wrapper) so they drop straight into the shadcn

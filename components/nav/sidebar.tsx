@@ -20,6 +20,7 @@ import {
   PanelLeftClose,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { BRAND_NAME } from "@/lib/brand";
 
 const NAV_ITEMS = [
   {
@@ -89,7 +90,7 @@ export function Sidebar({ onToggle }: { onToggle?: () => void }) {
         <div className="flex items-center gap-2">
           <Zap className="h-5 w-5 text-primary" />
           <span className="text-sm font-semibold tracking-tight text-sidebar-foreground">
-            Tokenmaxx
+            {BRAND_NAME}
           </span>
         </div>
         {onToggle && (

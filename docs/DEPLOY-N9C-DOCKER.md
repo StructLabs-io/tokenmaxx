@@ -1,6 +1,6 @@
-# Deploying Tokenmaxx to n9c-server in Docker (P8)
+# Deploying TokenMaxx to n9c-server in Docker (P8)
 
-This is the actual playbook for migrating Tokenmaxx off Cloudflare Workers
+This is the actual playbook for migrating TokenMaxx off Cloudflare Workers
 onto the private n9c-server Docker stack. Per OQ #6 the auth mechanism is
 **Supabase Auth (email+password and magic link, both enabled)**. Downtime
 during cutover is acceptable (Ben is the only user, OQ aware).

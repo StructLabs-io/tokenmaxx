@@ -13,7 +13,7 @@
 
 ---
 
-How your AI usage data gets from your machine into Tokenmaxx.
+How your AI usage data gets from your machine into TokenMaxx.
 
 ---
 
@@ -43,7 +43,7 @@ Claude Code writes detailed session logs to `~/.claude/projects/`. Codex CLI wri
 
 ### Per-model split
 
-A single Claude Code session can use multiple models (for example, Opus for a planning step and Haiku for routine edits). Tokenmaxx tracks these separately — **one database row per (session, model)** — because cost varies significantly by model.
+A single Claude Code session can use multiple models (for example, Opus for a planning step and Haiku for routine edits). TokenMaxx tracks these separately — **one database row per (session, model)** — because cost varies significantly by model.
 
 The rule:
 - Each model that represents ≥1% of a session's total tokens gets its own row
@@ -67,7 +67,7 @@ Same logic as local capture, but designed to run on a server (VPS, cloud instanc
 
 ## 3. Toggl integration (project attribution)
 
-If you track your time in Toggl, Tokenmaxx can automatically attribute AI usage to the project you were working on when the usage occurred.
+If you track your time in Toggl, TokenMaxx can automatically attribute AI usage to the project you were working on when the usage occurred.
 
 **How it works:**
 1. An Edge Function pulls your Toggl time entries hourly
@@ -96,7 +96,7 @@ These run automatically once pg_cron is configured. No action required after ini
 
 Anthropic and OpenAI do not publish quota cap numbers for Claude Max / Codex Pro subscriptions. The only source for "X% used" data is your subscription dashboard.
 
-Tokenmaxx ships two quota capture scripts for Claude:
+TokenMaxx ships two quota capture scripts for Claude:
 
 - **`scripts/brave-cookies.js`** — reads your Brave browser's on-disk SQLite cookie database directly (no browser open required) and decrypts the session cookie using the key stored in macOS Keychain. This is the credential source for the tier-2 script.
 - **`scripts/quota-tier2.js`** — calls claude.ai's internal usage API using the session cookies obtained by `brave-cookies.js`, plus cycletls TLS spoofing to bypass Cloudflare's bot detection. On each run it writes a new row to `quota_observations` with the current `percent_used` per quota window. Run this via cron every 15 minutes for live data.
@@ -112,7 +112,7 @@ A companion script `scripts/quota-tier1.js` scrapes quota % from browser-injecte
 ## 6. What is NOT captured by default
 
 - **API calls you make directly** to Anthropic/OpenAI in your own applications — these require custom instrumentation (v2.0 webhook ingest, or manual logging)
-- **IDE integrations** like Cursor or GitHub Copilot — these don't write local JSONL logs accessible to Tokenmaxx (v2.0 target)
+- **IDE integrations** like Cursor or GitHub Copilot — these don't write local JSONL logs accessible to TokenMaxx (v2.0 target)
 - **Quota reset times or token caps** — these come from `quota_observations`, which requires the v1.0 quota capture or manual entry
 
 ---

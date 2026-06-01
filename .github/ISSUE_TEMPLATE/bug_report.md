@@ -22,7 +22,7 @@ labels: bug
 
 - OS:
 - Node version:
-- Tokenmaxx version / commit:
+- TokenMaxx version / commit:
 - Supabase project region:
 - Cloudflare Pages or local dev:
 

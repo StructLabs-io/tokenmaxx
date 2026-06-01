@@ -57,7 +57,7 @@ export default {
         event_count: events ? JSON.parse(events).length : 0,
       });
     }
-    return new Response("Tokenmaxx demo refresher. GET /refresh or /status.", { status: 200 });
+    return new Response("TokenMaxx demo refresher. GET /refresh or /status.", { status: 200 });
   },
 };
 

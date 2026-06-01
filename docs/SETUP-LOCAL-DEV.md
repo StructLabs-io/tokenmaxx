@@ -12,7 +12,7 @@
 
 ---
 
-Run the full Tokenmaxx stack on your laptop with no Supabase account and no cloud deployment. Uses Supabase CLI to boot a local Postgres + Studio instance in Docker.
+Run the full TokenMaxx stack on your laptop with no Supabase account and no cloud deployment. Uses Supabase CLI to boot a local Postgres + Studio instance in Docker.
 
 ---
 

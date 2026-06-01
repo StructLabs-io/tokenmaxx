@@ -14,8 +14,10 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+import { BRAND_NAME } from "@/lib/brand";
+
 export const metadata: Metadata = {
-  title: "Tokenmaxx",
+  title: BRAND_NAME,
   description: "AI subscription usage tracking and cost attribution",
 };
 

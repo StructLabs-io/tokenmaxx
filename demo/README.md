@@ -1,6 +1,6 @@
-# Tokenmaxx — Public Demo
+# TokenMaxx — Public Demo
 
-This directory contains a self-contained demo deployment of Tokenmaxx
+This directory contains a self-contained demo deployment of TokenMaxx
 that ships with **fictional** usage data structured to look like a real
 solo consultant/dev's dashboard. Used at
 [tokenmaxx-demo.structlabs.io](https://tokenmaxx-demo.structlabs.io) (CF Pages).

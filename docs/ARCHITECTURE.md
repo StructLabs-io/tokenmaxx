@@ -111,7 +111,7 @@ See [DATA-MODEL.md](DATA-MODEL.md) for the simplified schema overview.
 
 Each user or team runs their own Supabase project. Multiple users within a team share one project, isolated via workspace membership and RLS.
 
-There is no shared Tokenmaxx database. Your data never leaves your Supabase project.
+There is no shared TokenMaxx database. Your data never leaves your Supabase project.
 
 ---
 

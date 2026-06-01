@@ -1,4 +1,4 @@
-/* Tokenmaxx theme: arctic
+/* TokenMaxx theme: arctic
    Generated from Claude Designs export at /tmp/tokenmaxx-themes/arctic/colors_and_type.css
    Transformation: :root -> [data-theme="arctic"]
                    .dark -> [data-theme="arctic"].dark
@@ -8,7 +8,7 @@
 
 /* =====================================================================
    TOKENMAXX — ARCTIC THEME
-   Design tokens for the Tokenmaxx AI-usage dashboard, re-skinned to a
+   Design tokens for the TokenMaxx AI-usage dashboard, re-skinned to a
    cool, glacial "Arctic" mood.
 
    - Light  = glacial whites + a saturated icy-blue primary
@@ -19,7 +19,7 @@
 
    Tokens follow the shadcn/ui contract: each is a bare HSL triplet
    (e.g. "201 96% 42%") consumed as hsl(var(--token)). This keeps the
-   file drop-in compatible with the real Tokenmaxx globals.css.
+   file drop-in compatible with the real TokenMaxx globals.css.
    ===================================================================== */
 
 /* Webfonts — Geist + Geist Mono are served from Google Fonts.
@@ -94,7 +94,7 @@
 }
 
 /* ---------------------------------------------------------------------
-   DARK — "Deep Ocean"  (Tokenmaxx default; <html class="dark">)
+   DARK — "Deep Ocean"  (TokenMaxx default; <html class="dark">)
    Very dark navy-teal ground, glacial-white ink, brighter azure primary.
    --------------------------------------------------------------------- */
 [data-theme="arctic"].dark {

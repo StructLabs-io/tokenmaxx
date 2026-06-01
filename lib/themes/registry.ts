@@ -7,7 +7,7 @@ export interface ThemeEntry {
 }
 
 export const THEMES: ThemeEntry[] = [
-  { slug: "electric",  name: "Electric",  description: "Dark, cyan & magenta — Tokenmaxx default identity", supportsLightDark: false, defaultMode: "dark" },
+  { slug: "electric",  name: "Electric",  description: "Dark, cyan & magenta — TokenMaxx default identity", supportsLightDark: false, defaultMode: "dark" },
   { slug: "paper",     name: "Paper",     description: "Warm off-white, ink-black text, reading-room feel", supportsLightDark: true,  defaultMode: "light" },
   { slug: "terminal",  name: "Terminal",  description: "High-contrast green-on-black hacker terminal",       supportsLightDark: false, defaultMode: "dark" },
   { slug: "arctic",    name: "Arctic",    description: "Cool glacial blues & whites; deep ocean in dark",    supportsLightDark: true,  defaultMode: "light" },

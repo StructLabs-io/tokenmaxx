@@ -1,4 +1,4 @@
-# Tokenmaxx theme system
+# TokenMaxx theme system
 
 Three things:
 
@@ -13,7 +13,7 @@ Three things:
 Paste this into Claude Designs. Output is six complete shadcn-compatible CSS theme blocks.
 
 ```
-You're designing a set of complete UI themes for Tokenmaxx — an AI
+You're designing a set of complete UI themes for TokenMaxx — an AI
 subscription usage-tracking dashboard. The app is built with Next.js 15,
 shadcn/ui, and Tailwind v4. It's dark by default, data-dense (tables,
 stacked-bar charts, dashboard tiles), and read primarily by one user
@@ -70,13 +70,13 @@ followed by this CSS structure:
     }
 
 Values are HSL space-separated WITHOUT the `hsl()` wrapper (e.g.
-`240 5.9% 10%`, not `hsl(240, 5.9%, 10%)`). Tokenmaxx wraps them at the
+`240 5.9% 10%`, not `hsl(240, 5.9%, 10%)`). TokenMaxx wraps them at the
 Tailwind layer.
 
 ## Themes to generate (in order)
 
 1. electric — dark-only. Electric cyan (#00F0D0) + magenta (#FF2D7B) as
-   primary/accent. Near-black background. This is Tokenmaxx's existing
+   primary/accent. Near-black background. This is TokenMaxx's existing
    identity; keep it recognisable.
 
 2. paper — warm off-white background, ink-black text, ONE muted accent
@@ -170,7 +170,7 @@ export interface ThemeEntry {
 }
 
 export const THEMES: ThemeEntry[] = [
-  { slug: "electric",  name: "Electric",  description: "Dark, cyan & magenta — Tokenmaxx default identity", supportsLightDark: false, defaultMode: "dark" },
+  { slug: "electric",  name: "Electric",  description: "Dark, cyan & magenta — TokenMaxx default identity", supportsLightDark: false, defaultMode: "dark" },
   { slug: "paper",     name: "Paper",     description: "Warm off-white, ink-black text, reading-room feel", supportsLightDark: true,  defaultMode: "light" },
   { slug: "terminal",  name: "Terminal",  description: "High-contrast green-on-black hacker terminal",       supportsLightDark: false, defaultMode: "dark" },
   { slug: "arctic",    name: "Arctic",    description: "Cool glacial blues & whites; deep ocean in dark",    supportsLightDark: true,  defaultMode: "light" },
@@ -371,7 +371,7 @@ in `.env` (and on the maxx Docker container's `web.env`).
 
 ## Notes on the prompt's design choices
 
-- **HSL not OKLCH.** Tokenmaxx already ships HSL via shadcn's standard
+- **HSL not OKLCH.** TokenMaxx already ships HSL via shadcn's standard
   pattern. Mixing OKLCH would require Tailwind config changes; not
   worth it for the v1 system.
 - **Six themes.** Fewer feels stingy; more becomes a wall in Settings.

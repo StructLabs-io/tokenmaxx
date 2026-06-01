@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Zap, Mail, KeyRound } from "lucide-react";
+import { BRAND_NAME } from "@/lib/brand";
 
 function LoginContent() {
   const router = useRouter();
@@ -60,7 +61,7 @@ function LoginContent() {
       <div className="w-full max-w-sm">
         <div className="mb-8 flex items-center justify-center gap-2">
           <Zap className="h-6 w-6 text-primary" />
-          <span className="text-lg font-semibold tracking-tight">Tokenmaxx</span>
+          <span className="text-lg font-semibold tracking-tight">{BRAND_NAME}</span>
         </div>
 
         <Card className="border-border bg-card">
