@@ -191,6 +191,11 @@ export async function getDashboardStats(days = 14): Promise<DashboardStats & { u
 // Projects page data
 // ---------------------------------------------------------------------------
 
+async function demoGate<T>(fn: () => Promise<T>, fallback: () => Promise<T> | T): Promise<T> {
+  if (isDemoMode()) return Promise.resolve(fallback());
+  return fn();
+}
+
 export async function getProjectsList(days = 30): Promise<{
   projects: ProjectTotals[];
   totalEvents: number;
@@ -198,6 +203,17 @@ export async function getProjectsList(days = 30): Promise<{
   unattributedCount: number;
   usingSeedData: boolean;
 }> {
+  if (isDemoMode()) {
+    const { demoDashboardStats } = await import("../demo/demo-mode-flag");
+    const s = demoDashboardStats(days);
+    return {
+      projects: s.topProjects,
+      totalEvents: s.totalEvents,
+      totalCost: s.totalCost,
+      unattributedCount: 0,
+      usingSeedData: true,
+    };
+  }
   if (!isServiceRoleConfigured()) {
     return buildSeedProjectsList();
   }
@@ -596,10 +612,33 @@ function windowStart(windowType: string, windowHours: number | null): string {
   return new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
 }
 
+// Demo-mode shortcut. Returns the fictional subscriptions and lets the
+// remainder of the function tree short-circuit cleanly without paginating
+// against Supabase.
+async function demoSubscriptionsSummary() {
+  const { demoSubscriptions } = await import("../demo/demo-mode-flag");
+  const subs = demoSubscriptions();
+  return {
+    subscriptions: subs.map((s) => ({
+      id: s.id,
+      provider: s.provider,
+      plan_name: s.plan_name,
+      monthly_cost_usd: s.monthly_cost_usd,
+      management_urls: s.management_urls,
+      started_at: s.started_at,
+      tokens_30d: 0,
+      cost_30d: null,
+      windows: [],
+    } as any)),
+    usingSeedData: true,
+  };
+}
+
 export async function getSubscriptionsSummary(): Promise<{
   subscriptions: SubscriptionSummary[];
   usingSeedData: boolean;
 }> {
+  if (isDemoMode()) return demoSubscriptionsSummary();
   if (!isServiceRoleConfigured()) {
     return { subscriptions: [], usingSeedData: false };
   }
@@ -720,6 +759,7 @@ export async function getQuotaWindowDetails(): Promise<{
   windows: QuotaWindowDetail[];
   usingSeedData: boolean;
 }> {
+  if (isDemoMode()) return { windows: [], usingSeedData: true };
   if (!isServiceRoleConfigured()) {
     return { windows: [], usingSeedData: false };
   }
@@ -824,6 +864,7 @@ export async function getQuotaWindowDetails(): Promise<{
 // ---------------------------------------------------------------------------
 
 export async function getModelBreakdown(days?: number): Promise<ModelBreakdownRow[]> {
+  if (isDemoMode()) return [];
   if (!isServiceRoleConfigured()) {
     const byModel = new Map<string, ModelBreakdownRow>();
     const cutoff = days
@@ -916,6 +957,7 @@ const WRAP_CUTOFF = `${WRAP_YEAR}-01-01`;
 const WRAP_MONTH_LABELS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
 export async function getWrapStats(): Promise<WrapStats | null> {
+  if (isDemoMode()) return null;
   if (!isServiceRoleConfigured()) return null;
 
   try {
@@ -1100,6 +1142,7 @@ export async function getUsersSummary(days = 30): Promise<{
   totalTokens: number;
   usingSeedData: boolean;
 }> {
+  if (isDemoMode()) return { users: [], totalHuman: 0, totalService: 0, totalTokens: 0, usingSeedData: true };
   if (!isServiceRoleConfigured()) {
     // Seed fallback — derive from SEED_USERS + SEED_USAGE_EVENTS
     const byUser = new Map<string, { tokens: number; cost: number | null }>();

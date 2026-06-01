@@ -27,7 +27,9 @@ ENV HOSTNAME=0.0.0.0
 RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+# public/ may not exist in this project; create empty so the copy below
+# is unconditional and the runtime stays happy.
+RUN mkdir -p ./public
 USER nextjs
 EXPOSE 3000
 CMD ["node", "server.js"]

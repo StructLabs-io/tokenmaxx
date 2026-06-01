@@ -22,6 +22,8 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
+import { DataTable } from "@/components/ui/data-table";
+import { Button } from "@/components/ui/button";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -250,6 +252,7 @@ export function ProjectsClient({
 }: ProjectsClientProps) {
   const [projects, setProjects] = useState<ProjectRow[]>(initialProjects);
   const totalTokens = projects.reduce((s, p) => s + p.totalTokens, 0);
+  const [viewMode, setViewMode] = useState<"tree" | "table">("tree");
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -382,7 +385,38 @@ export function ProjectsClient({
         </div>
       </div>
 
-      {/* Projects table */}
+      {/* View mode toggle */}
+      <div className="flex items-center justify-end gap-1">
+        <Button
+          variant={viewMode === "tree" ? "default" : "outline"}
+          size="sm"
+          className="h-7 px-2.5 text-xs"
+          onClick={() => setViewMode("tree")}
+        >
+          Tree
+        </Button>
+        <Button
+          variant={viewMode === "table" ? "default" : "outline"}
+          size="sm"
+          className="h-7 px-2.5 text-xs"
+          onClick={() => setViewMode("table")}
+        >
+          Table
+        </Button>
+      </div>
+
+      {/* §7 — TanStack DataTable view (sortable + filterable) */}
+      {viewMode === "table" && (
+        <DataTable
+          columns={projectsTableColumns(totalTokens, openEdit)}
+          data={projects}
+          pageSize={50}
+          globalFilterPlaceholder="Filter projects + clients…"
+        />
+      )}
+
+      {/* Projects tree (default — client→project grouping) */}
+      {viewMode === "tree" && (
       <div className="rounded-lg border border-border overflow-hidden">
         <Table>
           <TableHeader>
@@ -506,6 +540,7 @@ export function ProjectsClient({
           </TableBody>
         </Table>
       </div>
+      )}
 
       {/* Add/Edit dialog */}
       <ProjectDialog
@@ -530,4 +565,71 @@ export function ProjectsClient({
       />
     </>
   );
+}
+
+function projectsTableColumns(totalTokens: number, openEdit: (p: any) => void): any[] {
+  return [
+    {
+      accessorKey: "client",
+      header: "Client",
+      cell: (info: any) => (
+        <span className="text-xs text-muted-foreground">{info.getValue() ?? "Unaffiliated"}</span>
+      ),
+    },
+    {
+      accessorKey: "display_name",
+      header: "Project",
+      cell: (info: any) => (
+        <div className="flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full bg-primary shrink-0 opacity-70" />
+          <span className="text-sm">{info.getValue() as string}</span>
+        </div>
+      ),
+    },
+    {
+      accessorKey: "totalTokens",
+      header: "Tokens",
+      cell: (info: any) => (
+        <span className="text-right tabular-nums text-xs text-muted-foreground">{formatTokens(info.getValue() as number)}</span>
+      ),
+    },
+    {
+      id: "pct",
+      header: "% tokens",
+      accessorFn: (row: any) => (totalTokens > 0 ? row.totalTokens / totalTokens : 0),
+      cell: (info: any) => (
+        <span className="text-right tabular-nums text-xs text-muted-foreground">{`${Math.round((info.getValue() as number) * 100)}%`}</span>
+      ),
+    },
+    {
+      accessorKey: "totalCost",
+      header: "Cost",
+      cell: (info: any) => (
+        <span className="text-right tabular-nums text-xs">{info.getValue() != null ? formatCost(info.getValue() as number) : "—"}</span>
+      ),
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      cell: (info: any) => (
+        <div className="flex items-center gap-3 justify-end">
+          <button
+            onClick={() => openEdit(info.row.original)}
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            aria-label={`Edit ${info.row.original.display_name}`}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            Edit
+          </button>
+          <Link
+            href={`/projects/${info.row.original.slug}`}
+            className="text-xs text-primary hover:underline"
+          >
+            Details
+          </Link>
+        </div>
+      ),
+      enableSorting: false,
+    },
+  ];
 }
