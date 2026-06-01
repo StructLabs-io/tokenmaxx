@@ -27,7 +27,37 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  await supabase.auth.getUser();
+  // Demo deploy: skip auth gate entirely.
+  if (process.env.NEXT_PUBLIC_TOKENMAXX_DEMO === "1") return response;
+
+  const { data: { user } } = await supabase.auth.getUser();
+  const path = request.nextUrl.pathname;
+  const isAuthPath = path.startsWith("/auth/");
+
+  // Not signed in → redirect to login (unless we're already on an /auth/* page)
+  if (!user && !isAuthPath) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/auth/login";
+    url.searchParams.set("from", path);
+    return NextResponse.redirect(url);
+  }
+
+  // Single-user lock: only Ben's email is allowed (configurable via env)
+  const allowed = (process.env.TOKENMAXX_ALLOWED_EMAIL ?? "ben@auknowra.com").toLowerCase();
+  if (user && user.email && user.email.toLowerCase() !== allowed) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/auth/login";
+    url.searchParams.set("forbidden", "1");
+    return NextResponse.redirect(url);
+  }
+
+  // Already signed in → bounce off /auth/login
+  if (user && path === "/auth/login") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/";
+    return NextResponse.redirect(url);
+  }
+
   return response;
 }
 
