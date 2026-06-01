@@ -70,14 +70,32 @@ export async function getDashboardStats(days = 14): Promise<DashboardStats & { u
     return buildSeedStats(days);
   }
 
+  // P2: single Postgres RPC instead of paginating raw events through
+  // Cloudflare Workers' 50-subrequest limit.
   try {
     const supabase = getSupabaseServerClient();
+    const { data: rpcData, error: rpcErr } = await (supabase as any).rpc("fn_dashboard_stats", { p_days: days });
+    if (!rpcErr && rpcData) {
+      const r = rpcData as any;
+      return {
+        totalEvents: r.totalEvents ?? 0,
+        periodDays: r.periodDays ?? days,
+        totalTokens: r.totalTokens ?? 0,
+        totalCost: r.totalCost ?? null,
+        dailyTotals: (r.dailyTotals ?? []) as DailyTotal[],
+        topProjects: (r.topProjects ?? []) as ProjectTotals[],
+        usingSeedData: false,
+      };
+    }
+    // Fallback to legacy path on RPC failure
+    console.error("[data.getDashboardStats] RPC failed, falling back:", rpcErr);
+    const supabaseFallback = getSupabaseServerClient();
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - days);
     const cutoffDate = cutoff.toISOString().slice(0, 10);
 
     const events = await fetchAll<any>((from, to) =>
-      supabase
+      supabaseFallback
         .from("usage_events")
         .select("date_utc,total_tokens,cost_usd,project_id")
         .gte("date_utc", cutoffDate)
@@ -171,6 +189,20 @@ export async function getProjectsList(days = 30): Promise<{
 
   try {
     const supabase = getSupabaseServerClient();
+    // P2: single-RPC path
+    const { data: rpcData, error: rpcErr } = await (supabase as any).rpc("fn_projects_summary", { p_days: days });
+    if (!rpcErr && rpcData) {
+      const r = rpcData as any;
+      return {
+        projects: (r.projects ?? []) as ProjectTotals[],
+        totalEvents: r.totalEvents ?? 0,
+        totalCost: r.totalCost ?? null,
+        unattributedCount: r.unattributedCount ?? 0,
+        usingSeedData: false,
+      };
+    }
+    if (rpcErr) console.error("[fn_projects_summary] falling back:", rpcErr);
+
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - days);
     const cutoffDate = cutoff.toISOString().slice(0, 10);
@@ -676,12 +708,14 @@ export async function getQuotaWindowDetails(): Promise<{
   }
 
   try {
-    // Direct subscription + window fetch — no event aggregation needed for
-    // the dashboard's quota row. The full per-provider 30d totals live in
-    // getSubscriptionsSummary() which the /subscriptions page uses.
-    // Keeping this path small avoids blowing the Cloudflare Workers
-    // 50-subrequest/request limit (see fetchAll usage elsewhere).
     const supabase = getSupabaseServerClient();
+    // P2: try the single-RPC path first; falls back if function not deployed
+    const { data: rpcData, error: rpcErr } = await (supabase as any).rpc("fn_quota_window_details");
+    if (!rpcErr && Array.isArray(rpcData)) {
+      return { windows: rpcData as QuotaWindowDetail[], usingSeedData: false };
+    }
+    if (rpcErr) console.error("[fn_quota_window_details] falling back:", rpcErr);
+
     const [{ data: subs }, { data: rawWindows }] = await Promise.all([
       supabase.from("subscriptions").select("id,provider,plan_name,monthly_cost_usd").eq("active", true) as unknown as Promise<{ data: any[] | null }>,
       supabase.from("quota_windows").select("id,subscription_id,window_label,window_type,window_hours,notes").eq("active", true) as unknown as Promise<{ data: any[] | null }>,
