@@ -5,6 +5,27 @@ onto the private n9c-server Docker stack. Per OQ #6 the auth mechanism is
 **Supabase Auth (email+password and magic link, both enabled)**. Downtime
 during cutover is acceptable (Ben is the only user, OQ aware).
 
+## Status — live on n9c-server as of 2026-06-01
+
+✅ Container running: `docker compose ps` shows `tokenmaxx` Up (healthy) bound to
+`127.0.0.1:3030`. Reads `/root/.config/tokenmaxx/web.env` for Supabase URL +
+keys.
+✅ Caddy site added at `/etc/caddy/Caddyfile` for `tokenmaxx-next.structlabs.io`
+proxying to `127.0.0.1:3030`. Caddy reloaded.
+🟡 DNS record for `tokenmaxx-next.structlabs.io` → `143.198.85.61` is **not yet
+added** to Cloudflare. That's the only remaining manual step for the
+parallel-run subdomain. Once added, Caddy auto-acquires the cert and the
+container goes live on https.
+🟡 Supabase Auth + RLS-aware queries not yet wired. The container currently runs
+in the same no-auth mode as the Cloudflare Worker deploy. Auth is the next
+step before the DNS flip on the real `tokenmaxx.structlabs.io`.
+
+To finish the cutover when you're ready:
+1. Add the DNS record (CF dashboard).
+2. Wire `/auth/login`, middleware, RLS, all per the playbook below.
+3. Flip the primary `tokenmaxx.structlabs.io` A record to `143.198.85.61`.
+4. `npx wrangler delete --name tokenmaxx` once DNS propagates.
+
 ## Prerequisites on n9c-server
 
 - Docker 24+ and docker-compose 2+
