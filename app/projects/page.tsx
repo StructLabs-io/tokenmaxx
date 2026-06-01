@@ -78,10 +78,21 @@ export default async function ProjectsPage() {
             )}
           </CardHeader>
         </Card>
-        <Card className="gap-2 py-4">
+        <Card className={`gap-2 py-4 ${unattributedCount > 0 ? "border-amber-500/40 bg-amber-500/5" : ""}`}>
           <CardHeader className="px-4">
-            <p className="text-xs text-muted-foreground">Unattributed events</p>
-            <p className="text-2xl font-bold tabular-nums">{unattributedCount}</p>
+            <p className={`text-xs ${unattributedCount > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
+              {unattributedCount > 0 && "⚠ "}Unattributed events
+            </p>
+            <div className="flex items-baseline justify-between">
+              <p className={`text-2xl font-bold tabular-nums ${unattributedCount > 0 ? "text-amber-600 dark:text-amber-300" : ""}`}>
+                {unattributedCount.toLocaleString("en-US")}
+              </p>
+              {unattributedCount > 0 && (
+                <a href="/reconcile" className="text-xs text-amber-600 dark:text-amber-300 hover:underline">
+                  Reconcile →
+                </a>
+              )}
+            </div>
           </CardHeader>
         </Card>
       </div>

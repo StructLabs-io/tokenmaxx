@@ -15,6 +15,7 @@ import {
   GitMerge,
   LogOut,
   Users,
+  Github,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -113,7 +114,16 @@ export function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="border-t border-sidebar-border px-2 py-3">
+      <div className="border-t border-sidebar-border px-2 py-3 space-y-1">
+        <a
+          href="https://github.com/StructLabs-io/tokenmaxx"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2.5 rounded-full px-3 py-1.5 text-xs text-sidebar-foreground border border-sidebar-border transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground w-fit"
+        >
+          <Github className="h-3.5 w-3.5 shrink-0" />
+          Public repo
+        </a>
         <form action="/auth/logout" method="POST">
           <button
             type="submit"
