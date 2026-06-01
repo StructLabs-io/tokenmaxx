@@ -49,8 +49,12 @@ function fmtTokens(n: number): string {
   return String(n);
 }
 
-function fmtUsd(n: number): string { return n.toFixed(2); }
-function fmtMyr(n: number, rate: number): string { return (n * rate).toFixed(2); }
+function fmtUsd(n: number): string {
+  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function fmtMyr(n: number, rate: number): string {
+  return (n * rate).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
 function addDaysUtc(dateStr: string, days: number): string {
   const d = new Date(`${dateStr}T00:00:00Z`);
@@ -63,11 +67,11 @@ function buildBar(pct: number, width: number): string {
   return '[' + '█'.repeat(filled) + '░'.repeat(width - filled) + ']';
 }
 
-function workspaceIcon(name: string): string {
+function classifyWorkspace(name: string): { icon: string; label: string } {
   const lower = name.toLowerCase();
-  if (lower.includes('macbook') || lower.includes('mac')) return '💻';
-  if (lower.includes('server') || lower.includes('openclaw')) return '🖥';
-  return '📟';
+  if (lower.includes('macbook') || lower.includes('mac')) return { icon: '💻', label: 'MacBook' };
+  if (lower.includes('server') || lower.includes('openclaw')) return { icon: '🖥', label: 'Server' };
+  return { icon: '📟', label: name };
 }
 
 // --- Cost/token aggregation helpers ---
@@ -101,15 +105,28 @@ function perWorkspaceCostLines(
     const key = e.workspace_id ?? '__unknown__';
     byWs[key] = (byWs[key] ?? 0) + parseFloat(String(e.cost_usd ?? 0));
   }
+  // Build label/cost rows, sorted by cost desc
+  const entries = Object.entries(byWs)
+    .map(([wsId, cost]) => {
+      const name = wsNames[wsId] ?? wsId.slice(0, 12);
+      const { icon, label } = classifyWorkspace(name);
+      return { icon, label, cost };
+    })
+    .sort((a, b) => b.cost - a.cost);
+
+  // Pad colons so the $ amounts line up: longest label gets one trailing space,
+  // shorter labels get more.
+  const labels = [...entries.map((e) => e.label), 'Total'];
+  const widest = Math.max(...labels.map((l) => l.length));
+  const pad = (label: string) => label + ':' + ' '.repeat(widest - label.length + 1);
+
   const lines: string[] = [];
-  for (const [wsId, cost] of Object.entries(byWs).sort((a, b) => b[1] - a[1])) {
-    const name = wsNames[wsId] ?? wsId.slice(0, 12);
-    const icon = workspaceIcon(name);
-    lines.push(`${icon}  ${name}:  $${fmtUsd(cost)} USD`);
+  for (const e of entries) {
+    lines.push(`${e.icon} ${pad(e.label)}$${fmtUsd(e.cost)} USD`);
   }
   const total = Object.values(byWs).reduce((s, c) => s + c, 0);
   const myrStr = showMyr ? ` (MYR ${fmtMyr(total, myrRate)})` : '';
-  lines.push(`💰 Total:  $${fmtUsd(total)} USD${myrStr}`);
+  lines.push(`💰 ${pad('Total')}$${fmtUsd(total)} USD${myrStr}`);
   return lines;
 }
 
