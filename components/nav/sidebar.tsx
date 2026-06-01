@@ -17,9 +17,9 @@ import {
   Users,
   Github,
   Settings,
+  PanelLeftClose,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { AutoRefresh } from "@/components/nav/auto-refresh";
 
 const NAV_ITEMS = [
   {
@@ -79,7 +79,7 @@ const NAV_ITEMS = [
   },
 ];
 
-export function Sidebar() {
+export function Sidebar({ onToggle }: { onToggle?: () => void }) {
   const pathname = usePathname();
 
   return (
@@ -92,7 +92,16 @@ export function Sidebar() {
             Tokenmaxx
           </span>
         </div>
-        <AutoRefresh />
+        {onToggle && (
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-label="Hide sidebar"
+            className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          >
+            <PanelLeftClose className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       {/* Navigation */}
