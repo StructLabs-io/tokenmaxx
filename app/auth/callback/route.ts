@@ -1,17 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { publicOrigin } from "@/lib/public-origin";
 
-/**
- * PKCE auth callback handler.
- * Supabase redirects here after OAuth or magic-link flows to exchange
- * the authorization code for a session.
- */
 export async function GET(request: NextRequest) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
+  const origin = publicOrigin(request);
   const code = searchParams.get("code");
   const rawNext = searchParams.get("next");
-  // Reject anything that isn't a same-origin relative path. `//evil.com`
-  // is protocol-relative and most agents will resolve it cross-origin.
   const next = rawNext && rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/";
 
   if (code) {

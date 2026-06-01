@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { publicOrigin } from "@/lib/public-origin";
 
-/**
- * Sign-out handler. POST to this route to clear the Supabase session.
- * Redirects to /auth/login on success.
- */
 export async function POST(request: NextRequest) {
   const supabase = await createSupabaseServerClient();
   await supabase.auth.signOut();
-  return NextResponse.redirect(new URL("/auth/login", request.url));
+  return NextResponse.redirect(`${publicOrigin(request)}/auth/login`);
 }
