@@ -8,45 +8,9 @@
  */
 
 import { getSupabaseServerClient, isServiceRoleConfigured } from "@/lib/supabase/client";
+import type { ProviderBreakdown, WrapProject, MonthlyTotal, WrapStats } from "@/lib/supabase/types";
 
-export interface ProviderBreakdown {
-  provider: string;
-  tokens: number;
-  cost: number | null;
-  pct: number;
-}
-
-export interface WrapProject {
-  id: string;
-  slug: string;
-  display_name: string;
-  client: string | null;
-  tokens: number;
-  cost: number | null;
-}
-
-export interface MonthlyTotal {
-  month: string; // "2026-01" … "2026-12"
-  label: string; // "Jan", "Feb", …
-  tokens: number;
-  cost: number | null;
-}
-
-export interface WrapStats {
-  year: number;
-  totalTokens: number;
-  totalCost: number | null;
-  totalEvents: number;
-  topModel: string | null;
-  topModelTokens: number;
-  topMonth: string | null;      // "Jan" etc.
-  topMonthTokens: number;
-  peakDay: string | null;       // "2026-05-14"
-  peakDayTokens: number;
-  providerBreakdown: ProviderBreakdown[];
-  topProjects: WrapProject[];
-  monthlyTotals: MonthlyTotal[];
-}
+export type { ProviderBreakdown, WrapProject, MonthlyTotal, WrapStats };
 
 const YEAR = 2026;
 const CUTOFF = `${YEAR}-01-01`;

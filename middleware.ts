@@ -43,7 +43,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Single-user lock: only Ben's email is allowed (configurable via env)
-  const allowed = (process.env.TOKENMAXX_ALLOWED_EMAIL ?? "ben@auknowra.com").toLowerCase();
+  const allowed = (process.env.TOKENMAXX_ALLOWED_EMAIL ?? "ben@structlabs.io").toLowerCase();
   if (user && user.email && user.email.toLowerCase() !== allowed) {
     const url = request.nextUrl.clone();
     url.pathname = "/auth/login";

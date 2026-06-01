@@ -12,6 +12,7 @@
 
 import { NextRequest } from "next/server";
 import { getSupabaseServerClient, isServiceRoleConfigured } from "@/lib/supabase/client";
+import { requireAllowedUser } from "@/lib/auth-guard";
 import type { ProjectTotals, CreateProjectInput } from "@/lib/supabase/types";
 
 const DEFAULT_DAYS = 30;
@@ -107,6 +108,8 @@ export async function GET(req: NextRequest) {
 // ---- POST ---------------------------------------------------------------
 
 export async function POST(req: NextRequest) {
+  const denied = await requireAllowedUser();
+  if (denied) return denied;
   if (!isServiceRoleConfigured()) {
     return Response.json({ error: "Supabase not configured" }, { status: 503 });
   }

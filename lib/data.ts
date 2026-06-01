@@ -12,7 +12,7 @@
  */
 
 import { isServiceRoleConfigured, getSupabaseServerClient } from "@/lib/supabase/client";
-import type { DashboardStats, DailyTotal, ProjectTotals, UsageEvent, Project, ModelBreakdownRow, SubscriptionSummary, QuotaWindowWithUsage, UserSummaryRow } from "@/lib/supabase/types";
+import type { DashboardStats, DailyTotal, ProjectTotals, UsageEvent, Project, ModelBreakdownRow, SubscriptionSummary, QuotaWindowWithUsage, UserSummaryRow, WrapStats, UnattributedGroup } from "@/lib/supabase/types";
 import {
   SEED_USAGE_EVENTS,
   SEED_PROJECTS,
@@ -950,8 +950,6 @@ export { SEED_PROJECTS };
 // Wrap stats (2026 YTD) — used by /wrap page
 // ---------------------------------------------------------------------------
 
-import type { WrapStats } from "@/app/api/wrap/route";
-
 const WRAP_YEAR = 2026;
 const WRAP_CUTOFF = `${WRAP_YEAR}-01-01`;
 const WRAP_MONTH_LABELS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -1082,8 +1080,6 @@ export async function getWrapStats(): Promise<WrapStats | null> {
 // ---------------------------------------------------------------------------
 // Reconcile data — used by /reconcile page
 // ---------------------------------------------------------------------------
-
-import type { UnattributedGroup } from "@/app/api/reconcile/route";
 
 export async function getUnattributedGroups(): Promise<UnattributedGroup[]> {
   if (!isServiceRoleConfigured()) return [];

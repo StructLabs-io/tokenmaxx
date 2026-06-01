@@ -275,3 +275,55 @@ export interface CreateProjectInput {
   client?: string;
   billable: boolean;
 }
+
+// ---- Wrap (2026 YTD) — /api/wrap + /wrap page ----
+
+export interface ProviderBreakdown {
+  provider: string;
+  tokens: number;
+  cost: number | null;
+  pct: number;
+}
+
+export interface WrapProject {
+  id: string;
+  slug: string;
+  display_name: string;
+  client: string | null;
+  tokens: number;
+  cost: number | null;
+}
+
+export interface MonthlyTotal {
+  month: string; // "2026-01" … "2026-12"
+  label: string; // "Jan", "Feb", …
+  tokens: number;
+  cost: number | null;
+}
+
+export interface WrapStats {
+  year: number;
+  totalTokens: number;
+  totalCost: number | null;
+  totalEvents: number;
+  topModel: string | null;
+  topModelTokens: number;
+  topMonth: string | null;
+  topMonthTokens: number;
+  peakDay: string | null;
+  peakDayTokens: number;
+  providerBreakdown: ProviderBreakdown[];
+  topProjects: WrapProject[];
+  monthlyTotals: MonthlyTotal[];
+}
+
+// ---- Reconcile — /api/reconcile + /reconcile page ----
+
+export interface UnattributedGroup {
+  date_utc: string;
+  model: string;
+  capture_method: string;
+  event_count: number;
+  total_tokens: number;
+  total_cost: number | null;
+}

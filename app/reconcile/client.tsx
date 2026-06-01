@@ -8,8 +8,7 @@
  */
 
 import { useState, useTransition } from "react";
-import type { UnattributedGroup } from "@/app/api/reconcile/route";
-import type { ProjectTotals } from "@/lib/supabase/types";
+import type { UnattributedGroup, ProjectTotals } from "@/lib/supabase/types";
 import { formatTokens, formatCost, formatDateShort } from "@/lib/utils";
 import {
   Table,

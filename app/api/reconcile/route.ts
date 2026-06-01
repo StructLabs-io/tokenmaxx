@@ -11,15 +11,10 @@
 
 import { NextRequest } from "next/server";
 import { getSupabaseServerClient, isServiceRoleConfigured } from "@/lib/supabase/client";
+import { requireAllowedUser } from "@/lib/auth-guard";
+import type { UnattributedGroup } from "@/lib/supabase/types";
 
-export interface UnattributedGroup {
-  date_utc: string;
-  model: string;
-  capture_method: string;
-  event_count: number;
-  total_tokens: number;
-  total_cost: number | null;
-}
+export type { UnattributedGroup };
 
 // ---- GET ---------------------------------------------------------------
 
@@ -92,6 +87,8 @@ interface AttributionPayload {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = await requireAllowedUser();
+  if (denied) return denied;
   if (!isServiceRoleConfigured()) {
     return Response.json({ error: "Supabase not configured" }, { status: 503 });
   }

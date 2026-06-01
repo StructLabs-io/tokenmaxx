@@ -11,6 +11,7 @@
 
 import { NextRequest } from "next/server";
 import { getSupabaseServerClient, isServiceRoleConfigured } from "@/lib/supabase/client";
+import { requireAllowedUser } from "@/lib/auth-guard";
 import type { DailyTotal, UsageEventRow } from "@/lib/supabase/types";
 
 export interface ProjectDetail {
@@ -161,6 +162,8 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = await requireAllowedUser();
+  if (denied) return denied;
   if (!isServiceRoleConfigured()) {
     return Response.json({ error: "Supabase not configured" }, { status: 503 });
   }

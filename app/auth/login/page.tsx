@@ -20,6 +20,13 @@ function LoginContent() {
 
   const forbidden = sp.get("forbidden") === "1";
 
+  // Only accept same-origin relative paths to prevent open-redirects.
+  // `//evil.com` is a protocol-relative URL — most user agents treat it as cross-origin.
+  function safeRelative(p: string | null): string {
+    if (!p || !p.startsWith("/") || p.startsWith("//")) return "/";
+    return p;
+  }
+
   function sb() {
     return createBrowserClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -32,7 +39,7 @@ function LoginContent() {
     setError(null); setInfo(null); setLoading(true);
     const { error } = await sb().auth.signInWithPassword({ email, password });
     if (error) { setError(error.message); setLoading(false); return; }
-    router.push(sp.get("from") || "/");
+    router.push(safeRelative(sp.get("from")));
     router.refresh();
   }
 
@@ -41,7 +48,7 @@ function LoginContent() {
     setError(null); setInfo(null); setLoading(true);
     const { error } = await sb().auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(sp.get("from") || "/")}` },
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(safeRelative(sp.get("from")))}` },
     });
     setLoading(false);
     if (error) { setError(error.message); return; }
