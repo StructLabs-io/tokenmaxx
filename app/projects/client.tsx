@@ -395,55 +395,98 @@ export function ProjectsClient({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {projects
-              .sort((a, b) => b.totalTokens - a.totalTokens)
-              .map((project) => (
-                <TableRow key={project.id}>
-                  <TableCell className="pl-6">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="h-2.5 w-2.5 rounded-full shrink-0"
-                        style={{ background: "#6366f1" }}
-                      />
-                      <span className="font-medium">{project.display_name}</span>
-                      {project.client && (
-                        <span className="text-xs text-muted-foreground">
-                          · {project.client}
-                        </span>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums text-muted-foreground">
-                    {formatTokens(project.totalTokens)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {totalTokens > 0
-                      ? `${Math.round((project.totalTokens / totalTokens) * 100)}%`
-                      : "—"}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {project.totalCost != null ? formatCost(project.totalCost) : "—"}
-                  </TableCell>
-                  <TableCell className="pr-6 text-right">
-                    <div className="flex items-center justify-end gap-3">
-                      <button
-                        onClick={() => openEdit(project)}
-                        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                        aria-label={`Edit ${project.display_name}`}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                        Edit
-                      </button>
-                      <Link
-                        href={`/projects/${project.slug}`}
-                        className="text-xs text-primary hover:underline"
-                      >
-                        Details
-                      </Link>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+            {(() => {
+              // §4.1 — Group projects by client like Toggl: client header row
+              // (collapsible) above its project rows; clients ordered by total
+              // tokens desc; projects within client ordered the same.
+              const byClient = new Map<string, typeof projects>();
+              for (const p of projects) {
+                const c = p.client || "Unaffiliated";
+                if (!byClient.has(c)) byClient.set(c, []);
+                byClient.get(c)!.push(p);
+              }
+              const groups = Array.from(byClient.entries())
+                .map(([client, ps]) => ({
+                  client,
+                  projects: [...ps].sort((a, b) => b.totalTokens - a.totalTokens),
+                  totalTokens: ps.reduce((s, p) => s + p.totalTokens, 0),
+                  totalCost: ps.some((p) => p.totalCost != null)
+                    ? ps.reduce((s, p) => s + (p.totalCost ?? 0), 0)
+                    : null,
+                }))
+                .sort((a, b) => b.totalTokens - a.totalTokens);
+
+              const rows: React.ReactNode[] = [];
+              for (const g of groups) {
+                rows.push(
+                  <TableRow key={`client-${g.client}`} className="bg-muted/40 hover:bg-muted/40">
+                    <TableCell className="pl-6 font-semibold text-sm text-foreground">
+                      {g.client}
+                      <span className="ml-2 text-xs text-muted-foreground font-normal">
+                        ({g.projects.length} project{g.projects.length !== 1 ? "s" : ""})
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-foreground font-medium">
+                      {formatTokens(g.totalTokens)}
+                    </TableCell>
+                    <TableCell className="text-right text-foreground font-medium">
+                      {totalTokens > 0
+                        ? `${Math.round((g.totalTokens / totalTokens) * 100)}%`
+                        : "—"}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-foreground font-medium">
+                      {g.totalCost != null ? formatCost(g.totalCost) : "—"}
+                    </TableCell>
+                    <TableCell className="pr-6"></TableCell>
+                  </TableRow>,
+                );
+                for (const project of g.projects) {
+                  rows.push(
+                    <TableRow key={project.id}>
+                      <TableCell className="pl-10">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="h-2 w-2 rounded-full shrink-0 opacity-70"
+                            style={{ background: "#6366f1" }}
+                          />
+                          <span className="text-sm">{project.display_name}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums text-muted-foreground">
+                        {formatTokens(project.totalTokens)}
+                      </TableCell>
+                      <TableCell className="text-right text-muted-foreground">
+                        {totalTokens > 0
+                          ? `${Math.round((project.totalTokens / totalTokens) * 100)}%`
+                          : "—"}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {project.totalCost != null ? formatCost(project.totalCost) : "—"}
+                      </TableCell>
+                      <TableCell className="pr-6 text-right">
+                        <div className="flex items-center justify-end gap-3">
+                          <button
+                            onClick={() => openEdit(project)}
+                            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                            aria-label={`Edit ${project.display_name}`}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            Edit
+                          </button>
+                          <Link
+                            href={`/projects/${project.slug}`}
+                            className="text-xs text-primary hover:underline"
+                          >
+                            Details
+                          </Link>
+                        </div>
+                      </TableCell>
+                    </TableRow>,
+                  );
+                }
+              }
+              return rows;
+            })()}
 
             {/* Unattributed row */}
             {unattributedCount > 0 && (

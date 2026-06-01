@@ -57,13 +57,23 @@ export default async function WrapPage() {
   return (
     <div className="p-6 space-y-6 max-w-4xl">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">
-          {year} Wrapped
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Your AI usage — year to date
-        </p>
+      <div className="flex items-end justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">
+            {year} Wrapped
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Your AI usage — year to date
+          </p>
+        </div>
+        {/* §9.2 — period toggle. Currently shows YTD; month/week views to wire
+            after we agree on the slice (calendar month/week per OQ #9 = yes).
+            These links navigate to the dashboard which has the underlying data. */}
+        <div className="inline-flex rounded-md border border-border p-0.5 text-xs bg-muted/40">
+          <span className="px-2.5 py-1 rounded bg-background shadow-sm">YTD</span>
+          <a href="/?range=30D" className="px-2.5 py-1 rounded text-muted-foreground hover:text-foreground">This month</a>
+          <a href="/?range=7D" className="px-2.5 py-1 rounded text-muted-foreground hover:text-foreground">This week</a>
+        </div>
       </div>
 
       {/* Hero stats row */}

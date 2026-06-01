@@ -58,8 +58,32 @@ function toWindowCardProp(detail: QuotaWindowDetail): QuotaWindow {
   };
 }
 
+async function getInferredCaps(): Promise<Map<number, { p25: number; p50: number; p75: number; n: number; confidence: string }>> {
+  try {
+    const { getSupabaseServerClient, isServiceRoleConfigured } = await import("@/lib/supabase/client");
+    if (!isServiceRoleConfigured()) return new Map();
+    const sb = getSupabaseServerClient();
+    const { data, error } = await (sb as any).rpc("fn_quota_caps_inferred");
+    if (error || !Array.isArray(data)) return new Map();
+    const m = new Map<number, any>();
+    for (const r of data) {
+      m.set(r.window_id, {
+        p25: Number(r.cap_p25) || 0,
+        p50: Number(r.cap_p50) || 0,
+        p75: Number(r.cap_p75) || 0,
+        n: r.n_samples ?? 0,
+        confidence: r.confidence ?? "low",
+      });
+    }
+    return m;
+  } catch { return new Map(); }
+}
+
 export default async function QuotaPage() {
-  const { windows, usingSeedData } = await getQuotaWindowDetails();
+  const [{ windows, usingSeedData }, caps] = await Promise.all([
+    getQuotaWindowDetails(),
+    getInferredCaps(),
+  ]);
 
   // Group by subscription (provider + plan_name)
   type Group = { provider: string; plan_name: string; windows: QuotaWindowDetail[] };
@@ -98,14 +122,20 @@ export default async function QuotaPage() {
         </div>
       </div>
 
-      {/* No-cap notice */}
-      <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-300">
-        <span className="font-medium">Quota caps not set</span> — run quota scraping to populate{" "}
-        <code className="text-xs bg-amber-100 dark:bg-amber-900/40 px-1 py-0.5 rounded">
-          quota_tokens
-        </code>
-        . Progress bars will activate once caps are available.
-      </div>
+      {/* Cap inference notice */}
+      {caps.size > 0 ? (
+        <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 dark:border-blue-800/50 dark:bg-blue-950/30 dark:text-blue-300">
+          <span className="font-medium">Estimated caps shown</span> — best-effort inference from{" "}
+          <code className="text-xs bg-blue-100 dark:bg-blue-900/40 px-1 py-0.5 rounded">
+            tokens_observed / (percent_used / 100)
+          </code>{" "}
+          across recent quota observations (filtered to ≥15% usage, single dominant model). Confidence label reflects sample size + spread. Not official from Anthropic/OpenAI.
+        </div>
+      ) : (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-300">
+          <span className="font-medium">No cap inference yet</span> — needs more high-percent observations to compute. Use your subscription heavily and the estimate will populate.
+        </div>
+      )}
 
       {windows.length === 0 ? (
         <Card>
@@ -145,6 +175,34 @@ export default async function QuotaPage() {
                       fillPct={detail.fillPct ?? null}
                     />
 
+                    {/* Inferred cap row */}
+                    {caps.get(detail.id) && (
+                      <div className="px-1 text-xs">
+                        <div className="flex items-center justify-between gap-2 rounded border border-border bg-muted/30 px-2 py-1">
+                          <span className="text-muted-foreground">
+                            Estimated cap{" "}
+                            <span
+                              className={
+                                caps.get(detail.id)!.confidence === "high"
+                                  ? "text-emerald-500"
+                                  : caps.get(detail.id)!.confidence === "medium"
+                                  ? "text-amber-500"
+                                  : "text-muted-foreground/60"
+                              }
+                              title={`Confidence: ${caps.get(detail.id)!.confidence} (n=${caps.get(detail.id)!.n} samples)`}
+                            >
+                              · {caps.get(detail.id)!.confidence}
+                            </span>
+                          </span>
+                          <span className="tabular-nums text-foreground">
+                            ~{formatTokens(caps.get(detail.id)!.p50)}{" "}
+                            <span className="text-muted-foreground">
+                              ({formatTokens(caps.get(detail.id)!.p25)}–{formatTokens(caps.get(detail.id)!.p75)})
+                            </span>
+                          </span>
+                        </div>
+                      </div>
+                    )}
                     {/* Supplementary info below the card */}
                     <div className="flex items-center justify-between px-1 text-xs text-muted-foreground">
                       <span>
