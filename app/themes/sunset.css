@@ -1,0 +1,259 @@
+/* Tokenmaxx theme: sunset
+   Generated from Claude Designs export at /tmp/tokenmaxx-themes/sunset/colors_and_type.css
+   Transformation: :root -> [data-theme="sunset"]
+                   .dark -> [data-theme="sunset"].dark
+                   helper selectors prefixed with [data-theme="sunset"]
+   Do not hand-edit; regenerate from source if the theme changes.
+*/
+
+/* ============================================================================
+   TOKENMAXX — SUNSET THEME
+   Design tokens: color + type for the Tokenmaxx AI-usage dashboard.
+
+   Theme: "Sunset" — warm golden-hour mood.
+     • Light  = warm amber / coral / peach   (daytime golden hour)
+     • Dark   = dusk-purple with warm tints  (evening sky after sundown)
+     • Accent = a single saturated sunset orange–coral
+     • Charts = 5 warm-spectrum hues (gold→amber→coral→rose→magenta)
+                + 1 cool teal counterweight
+
+   System: shadcn/ui tokens, expressed as raw HSL channels (NO hsl()) so they
+   compose into hsl(var(--x) / <alpha>). Border radius 0.5rem. Tabular numerals.
+   Mirrors StructLabs-io/tokenmaxx app/globals.css structure (Tailwind v4 HSL).
+   ========================================================================== */
+
+/* Geist Sans + Geist Mono — the real Tokenmaxx fonts, served from Google Fonts. */
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800;900&family=Geist+Mono:wght@400;500;600&display=swap');
+
+/* ----------------------------------------------------------------------------
+   1. shadcn/ui semantic tokens — LIGHT (default)
+   Raw "H S% L%" triplets. Consume as hsl(var(--token)) or hsl(var(--token)/.5)
+   -------------------------------------------------------------------------- */
+[data-theme="sunset"] {
+  --background: 28 100% 98%;       /* warm peach-white paper            */
+  --foreground: 20 24% 16%;        /* deep warm espresso text           */
+  --card: 30 100% 99%;
+  --card-foreground: 20 24% 16%;
+  --popover: 30 100% 99%;
+  --popover-foreground: 20 24% 16%;
+
+  --primary: 16 88% 52%;           /* SUNSET — deep orange-coral accent */
+  --primary-foreground: 30 100% 99%;
+  --secondary: 28 60% 94%;         /* soft peach surface                */
+  --secondary-foreground: 20 30% 24%;
+  --muted: 28 50% 95%;
+  --muted-foreground: 22 16% 46%;
+  --accent: 24 90% 93%;            /* warm peach hover surface          */
+  --accent-foreground: 16 64% 32%;
+  --destructive: 0 78% 54%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 28 40% 89%;
+  --input: 28 40% 89%;
+  --ring: 16 88% 52%;
+  --radius: 0.5rem;
+
+  /* charts — warm sunset spectrum + 1 cool counterweight */
+  --chart-1: 40 96% 56%;           /* gold     */
+  --chart-2: 28 92% 56%;           /* amber    */
+  --chart-3: 12 88% 58%;           /* coral    */
+  --chart-4: 346 80% 58%;          /* rose     */
+  --chart-5: 318 64% 56%;          /* magenta  */
+  --chart-6: 190 72% 46%;          /* teal — cool counterweight */
+
+  /* sidebar */
+  --sidebar-background: 26 72% 96%;
+  --sidebar-foreground: 22 20% 32%;
+  --sidebar-primary: 16 88% 52%;
+  --sidebar-primary-foreground: 30 100% 99%;
+  --sidebar-accent: 24 84% 91%;
+  --sidebar-accent-foreground: 16 64% 30%;
+  --sidebar-border: 28 40% 88%;
+  --sidebar-ring: 16 88% 52%;
+
+  /* ---- positive / warning semantic hues (warm-leaning) ---- */
+  --success: 152 56% 40%;
+  --warning: 36 96% 50%;
+}
+
+/* ----------------------------------------------------------------------------
+   2. shadcn/ui semantic tokens — DARK (dusk purple w/ warm tints)
+   App ships <html class="dark"> by default.
+   -------------------------------------------------------------------------- */
+[data-theme="sunset"].dark {
+  --background: 265 32% 9%;        /* deep dusk-purple night sky        */
+  --foreground: 30 40% 94%;        /* warm moonlight off-white          */
+  --card: 264 26% 13%;
+  --card-foreground: 30 40% 94%;
+  --popover: 264 26% 12%;
+  --popover-foreground: 30 40% 94%;
+
+  --primary: 18 92% 60%;           /* glowing coral-orange against dusk */
+  --primary-foreground: 265 40% 10%;
+  --secondary: 264 20% 20%;
+  --secondary-foreground: 30 36% 92%;
+  --muted: 264 18% 19%;
+  --muted-foreground: 28 18% 68%;
+  --accent: 280 30% 24%;           /* dusk-violet hover surface         */
+  --accent-foreground: 30 40% 94%;
+  --destructive: 0 70% 48%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 268 18% 22%;
+  --input: 268 18% 22%;
+  --ring: 18 92% 60%;
+
+  --chart-1: 42 96% 62%;
+  --chart-2: 28 94% 62%;
+  --chart-3: 12 90% 64%;
+  --chart-4: 346 82% 64%;
+  --chart-5: 316 68% 64%;
+  --chart-6: 190 76% 56%;
+
+  --sidebar-background: 268 30% 11%;
+  --sidebar-foreground: 28 24% 78%;
+  --sidebar-primary: 18 92% 60%;
+  --sidebar-primary-foreground: 265 40% 10%;
+  --sidebar-accent: 272 24% 20%;
+  --sidebar-accent-foreground: 30 40% 94%;
+  --sidebar-border: 268 18% 20%;
+  --sidebar-ring: 18 92% 60%;
+
+  --success: 152 52% 52%;
+  --warning: 38 96% 60%;
+}
+
+/* ----------------------------------------------------------------------------
+   3. Convenience aliases — resolved colors (fg1/fg2, bg1/bg2, accent, lines)
+   Use these in plain CSS/HTML where you don't want to write hsl(var(--x)).
+   -------------------------------------------------------------------------- */
+[data-theme="sunset"] {
+  --bg-1: hsl(var(--background));        /* page            */
+  --bg-2: hsl(var(--card));              /* raised surface  */
+  --bg-3: hsl(var(--muted));             /* sunken surface  */
+  --fg-1: hsl(var(--foreground));        /* primary text    */
+  --fg-2: hsl(var(--muted-foreground));  /* secondary text  */
+  --fg-3: hsl(var(--foreground) / 0.55); /* tertiary text   */
+  --line: hsl(var(--border));            /* hairline border */
+  --brand: hsl(var(--primary));          /* sunset accent   */
+  --brand-fg: hsl(var(--primary-foreground));
+
+  /* Sunset gradient — golden-hour wash, used for hero / wrapped surfaces. */
+  --sunset-gradient: linear-gradient(135deg,
+      hsl(40 96% 56%) 0%,
+      hsl(20 92% 56%) 42%,
+      hsl(346 78% 56%) 78%,
+      hsl(300 56% 48%) 100%);
+  --dusk-gradient: linear-gradient(160deg,
+      hsl(265 40% 14%) 0%,
+      hsl(285 36% 18%) 55%,
+      hsl(18 70% 30%) 130%);
+}
+
+/* ----------------------------------------------------------------------------
+   4. Typography — Geist (sans) for everything, Geist Mono for numbers/code.
+   Sizes follow the dense dashboard scale used in the app.
+   -------------------------------------------------------------------------- */
+[data-theme="sunset"] {
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* type scale (rem) */
+  --text-3xl: 1.875rem;   /* 30px — page hero (Wrapped)        */
+  --text-2xl: 1.5rem;     /* 24px — big stat numbers           */
+  --text-xl:  1.25rem;    /* 20px — page H1                    */
+  --text-lg:  1.125rem;   /* 18px — card title (large)         */
+  --text-base:1rem;       /* 16px — body                       */
+  --text-sm:  0.875rem;   /* 14px — default UI text            */
+  --text-xs:  0.75rem;    /* 12px — captions, labels           */
+  --text-2xs: 0.6875rem;  /* 11px — chart ticks, micro-labels  */
+
+  /* weights */
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+  --fw-black: 800;
+
+  /* tracking */
+  --tracking-tight: -0.02em;   /* headings */
+  --tracking-wide: 0.06em;     /* uppercase labels */
+}
+
+/* ----------------------------------------------------------------------------
+   5. Semantic type classes — apply directly, or copy the rules.
+   All numeric/tabular contexts use Geist Mono + tabular-nums.
+   -------------------------------------------------------------------------- */
+[data-theme="sunset"] .tm-h1 {
+  font-family: var(--font-sans);
+  font-size: var(--text-xl);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg-1);
+  line-height: 1.2;
+}
+[data-theme="sunset"] .tm-h2 {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--fw-medium);
+  color: var(--fg-1);
+  line-height: 1.3;
+}
+[data-theme="sunset"] .tm-hero {
+  font-family: var(--font-sans);
+  font-size: var(--text-3xl);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg-1);
+  line-height: 1.05;
+}
+[data-theme="sunset"] .tm-p {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--fw-regular);
+  color: var(--fg-1);
+  line-height: 1.5;
+}
+[data-theme="sunset"] .tm-muted {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--fg-2);
+  line-height: 1.5;
+}
+[data-theme="sunset"] .tm-label {
+  font-family: var(--font-sans);
+  font-size: var(--text-2xs);
+  font-weight: var(--fw-medium);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  color: var(--fg-2);
+}
+[data-theme="sunset"] .tm-stat {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xl);
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg-1);
+}
+[data-theme="sunset"] .tm-num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+[data-theme="sunset"] .tm-code {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  background: hsl(var(--muted));
+  color: var(--fg-1);
+  padding: 0.1em 0.35em;
+  border-radius: calc(var(--radius) - 4px);
+}
+
+/* Base reset hook (optional) — matches app body settings. */
+[data-theme="sunset"] .tm-theme {
+  background: var(--bg-1);
+  color: var(--fg-1);
+  font-family: var(--font-sans);
+  font-feature-settings: "rlig" 1, "calt" 1;
+  -webkit-font-smoothing: antialiased;
+}

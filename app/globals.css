@@ -3,6 +3,10 @@
 /*
  * CSS custom properties -- shadcn/ui design tokens.
  * These are referenced by Tailwind utility classes via hsl(var(--...)).
+ * The :root and .dark blocks below are the no-theme-applied fallback;
+ * per-theme overrides live in app/themes/<slug>.css scoped to
+ * [data-theme="<slug>"] and [data-theme="<slug>"].dark, and are imported
+ * AFTER these fallbacks so equal-specificity selectors win on source order.
  */
 
 :root {
@@ -75,6 +79,10 @@
   --sidebar-border: 240 3.7% 15.9%;
   --sidebar-ring: 217.2 91.2% 59.8%;
 }
+
+/* Per-theme overrides — keep AFTER the fallback :root/.dark blocks so equal-
+   specificity [data-theme="..."] selectors win the cascade on source order. */
+@import "./themes/index.css";
 
 /*
  * Register CSS vars as Tailwind theme values so utility classes resolve.

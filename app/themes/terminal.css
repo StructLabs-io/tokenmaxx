@@ -1,0 +1,153 @@
+/* Tokenmaxx theme: terminal
+   Generated from Claude Designs export at /tmp/tokenmaxx-themes/terminal/colors_and_type.css
+   Transformation: :root -> [data-theme="terminal"]
+                   .dark -> [data-theme="terminal"].dark
+                   helper selectors prefixed with [data-theme="terminal"]
+   Do not hand-edit; regenerate from source if the theme changes.
+*/
+
+/* ============================================================================
+ * Tokenmaxx — Terminal Theme
+ * Design tokens for the high-contrast hacker-terminal usage dashboard.
+ *
+ * Source app: StructLabs-io/tokenmaxx (Next.js 15 + shadcn/ui + Tailwind v4).
+ * The production app ships the default shadcn dark theme + Geist Mono; this
+ * file re-skins that token contract into the TERMINAL direction:
+ *   green-on-black · monospace · near-square corners · dark-mode only.
+ *
+ * Colors are HSL triplets (no OKLCH) so they drop straight into the app's
+ * `hsl(var(--token))` usage and Tailwind v4 `@theme inline` mapping.
+ * ========================================================================== */
+
+/* ----------------------------------------------------------------------------
+ * Webfont — JetBrains Mono (local woff2, variable; covers 400–700)
+ * Production app currently uses Geist Mono via next/font; this theme moves to
+ * JetBrains Mono per the terminal direction. See README "Typography".
+ * -------------------------------------------------------------------------- */
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/JetBrainsMono-latin.woff2") format("woff2");
+}
+
+[data-theme="terminal"] {
+  /* === Core palette (HSL triplets — used as hsl(var(--x))) ================ */
+  --background: 0 0% 0%;            /* pure black                            */
+  --foreground: 135 60% 88%;       /* pale phosphor green-white (body text) */
+
+  --card: 140 30% 5%;              /* near-black, faint green lift          */
+  --card-foreground: 135 60% 88%;
+  --popover: 140 32% 6%;
+  --popover-foreground: 135 60% 88%;
+
+  --primary: 135 100% 50%;         /* #00FF41 — the signature terminal green */
+  --primary-foreground: 0 0% 0%;   /* black text on green fills              */
+
+  --secondary: 140 28% 11%;        /* dim green-black chip                   */
+  --secondary-foreground: 135 55% 82%;
+
+  --muted: 140 24% 10%;
+  --muted-foreground: 135 22% 56%; /* dimmed phosphor — secondary text       */
+
+  --accent: 140 40% 14%;           /* hover wash / active nav                */
+  --accent-foreground: 135 90% 72%;
+
+  --destructive: 18 100% 56%;      /* amber-orange (kept clear of red≈green)  */
+  --destructive-foreground: 0 0% 4%;
+  --warning: 38 100% 56%;          /* amber — stale / caution states          */
+
+  --border: 135 38% 15%;           /* dim green grid line                     */
+  --input: 135 38% 15%;
+  --ring: 135 100% 50%;            /* focus ring = signature green            */
+
+  /* === Charts (terminal-saturated, 5-up) ================================= */
+  --chart-1: 135 100% 50%;         /* green   */
+  --chart-2: 180 100% 50%;         /* cyan    */
+  --chart-3: 45 100% 55%;          /* amber   */
+  --chart-4: 300 100% 64%;         /* magenta */
+  --chart-5: 0 0% 96%;             /* white   */
+
+  /* === Sidebar (slightly deeper than content) =========================== */
+  --sidebar-background: 150 40% 3%;
+  --sidebar-foreground: 135 30% 64%;
+  --sidebar-primary: 135 100% 50%;
+  --sidebar-primary-foreground: 0 0% 0%;
+  --sidebar-accent: 140 45% 12%;
+  --sidebar-accent-foreground: 135 95% 75%;
+  --sidebar-border: 135 38% 13%;
+  --sidebar-ring: 135 100% 50%;
+
+  /* === Radius — near-square terminal corners ============================= */
+  --radius: 0.125rem;
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 1px);
+  --radius-sm: 0px;
+
+  /* === Typography ======================================================== */
+  --font-mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, "SFMono-Regular",
+               "Menlo", "Consolas", monospace;
+  --font-sans: var(--font-mono);   /* terminal theme = mono everywhere       */
+
+  /* Type scale (px @ 16px root) — dense, monospace-friendly                 */
+  --text-display: 2.25rem;  /* 36 — Wrapped hero numerals                    */
+  --text-h1: 1.25rem;       /* 20 — page titles                             */
+  --text-h2: 0.875rem;      /* 14 — section / card titles                    */
+  --text-body: 0.875rem;    /* 14 — default body                            */
+  --text-sm: 0.8125rem;     /* 13 — table cells, controls                    */
+  --text-xs: 0.75rem;       /* 12 — captions, badges                         */
+  --text-2xs: 0.6875rem;    /* 11 — chart ticks, eyebrow labels              */
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --leading-tight: 1.1;
+  --leading-normal: 1.45;
+  --tracking-tight: -0.01em;
+  --tracking-eyebrow: 0.08em;  /* uppercase eyebrow labels                   */
+
+  /* === Elevation / glow ================================================== */
+  --shadow-card: 0 0 0 1px hsl(135 38% 15%);            /* flat hairline ring */
+  --shadow-glow: 0 0 0 1px hsl(135 100% 50% / 0.5),
+                 0 0 12px -2px hsl(135 100% 50% / 0.35); /* primary focus glow */
+  --scanline: hsl(135 100% 50% / 0.03);                  /* optional CRT tint  */
+}
+
+/* ----------------------------------------------------------------------------
+ * Semantic element styles — apply when authoring static HTML for this brand.
+ * Mirrors the app's defaults: mono body, tabular numerals, hairline borders.
+ * -------------------------------------------------------------------------- */
+[data-theme="terminal"] body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: var(--font-mono);
+  font-size: var(--text-body);
+  line-height: var(--leading-normal);
+  font-feature-settings: "tnum" 1, "calt" 1; /* tabular figures throughout    */
+  -webkit-font-smoothing: antialiased;
+}
+
+[data-theme="terminal"] h1 {
+  font-size: var(--text-h1);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-tight);
+}
+[data-theme="terminal"] h2 {
+  font-size: var(--text-h2);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
+}
+[data-theme="terminal"] .eyebrow {
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  color: hsl(var(--muted-foreground));
+}
+[data-theme="terminal"] .numeral { font-variant-numeric: tabular-nums; }
+[data-theme="terminal"] code, [data-theme="terminal"] .mono { font-family: var(--font-mono); }
+[data-theme="terminal"] a { color: hsl(var(--primary)); text-underline-offset: 3px; }
+[data-theme="terminal"] ::selection { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }

@@ -26,6 +26,21 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                var s = JSON.parse(localStorage.getItem('tokenmaxx:theme') || '{}');
+                var slug = s.slug || 'electric';
+                var mode = s.mode || 'dark';
+                document.documentElement.setAttribute('data-theme', slug);
+                document.documentElement.classList.toggle('dark', mode === 'dark');
+              } catch (e) {}
+            `,
+          }}
+        />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

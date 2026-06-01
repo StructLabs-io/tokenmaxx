@@ -1,0 +1,213 @@
+/* Tokenmaxx theme: paper
+   Generated from Claude Designs export at /tmp/tokenmaxx-themes/paper/colors_and_type.css
+   Transformation: :root -> [data-theme="paper"]
+                   .dark -> [data-theme="paper"].dark
+                   helper selectors prefixed with [data-theme="paper"]
+   Do not hand-edit; regenerate from source if the theme changes.
+*/
+
+/* ============================================================================
+   TOKENMAXX — "PAPER" THEME
+   Warm reading-room palette for a single-user AI usage dashboard.
+   Ink-on-paper, one muted terracotta accent, calm and low-noise.
+
+   Stack of origin: Next.js 15 + shadcn/ui + Tailwind v4, HSL CSS variables.
+   These tokens are a drop-in replacement for the repo's app/globals.css :root
+   and .dark blocks. Channel values are bare HSL triples so shadcn utilities
+   resolve them via hsl(var(--token)).
+   ============================================================================ */
+
+/* ---- Webfonts (Google Fonts CDN) -----------------------------------------
+   Serif  : Newsreader  — literary display for titles, wordmark, hero numbers
+   Sans   : IBM Plex Sans — UI, body, labels (tabular numerals available)
+   Mono   : IBM Plex Mono — model ids, slugs, raw events, code
+   NOTE: the source repo shipped Geist / Geist Mono. The Paper theme swaps to a
+   serif-paired humanist trio for the reading-room mood. Flagged to the user. */
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+[data-theme="paper"] {
+  /* ---- Base surfaces & ink (LIGHT / Paper) ---- */
+  --background: 40 33% 94%;        /* warm off-white paper */
+  --foreground: 28 16% 15%;        /* warm ink-black */
+  --card: 42 46% 97%;              /* lifted paper, lighter than bg */
+  --card-foreground: 28 16% 15%;
+  --popover: 42 46% 97%;
+  --popover-foreground: 28 16% 15%;
+
+  /* ---- Primary = ink (calm default buttons) ---- */
+  --primary: 28 18% 17%;
+  --primary-foreground: 42 46% 97%;
+
+  /* ---- Warm neutral support ---- */
+  --secondary: 38 26% 89%;
+  --secondary-foreground: 28 18% 17%;
+  --muted: 38 24% 90%;
+  --muted-foreground: 30 9% 40%;
+  --accent: 36 30% 87%;            /* subtle warm hover surface */
+  --accent-foreground: 28 18% 17%;
+
+  /* ---- The one spot colour: muted terracotta ---- */
+  --brand: 16 49% 47%;             /* terracotta / clay */
+  --brand-foreground: 42 46% 97%;
+  --brand-muted: 16 38% 92%;       /* terracotta tint surface */
+
+  /* ---- Feedback ---- */
+  --destructive: 6 52% 47%;        /* muted brick red, tuned to paper */
+  --destructive-foreground: 42 46% 97%;
+  --success: 150 28% 36%;          /* muted sage, for positive deltas */
+  --warning: 34 60% 46%;           /* amber, quota nearing cap */
+
+  /* ---- Lines & focus ---- */
+  --border: 36 22% 83%;
+  --input: 36 22% 83%;
+  --ring: 16 49% 47%;              /* terracotta focus ring */
+
+  --radius: 0.5rem;
+
+  /* ---- Chart palette — muted, paper-safe, no neon ---- */
+  --chart-1: 16 49% 47%;           /* terracotta   */
+  --chart-2: 32 52% 50%;           /* ochre / amber */
+  --chart-3: 150 24% 38%;          /* sage green   */
+  --chart-4: 205 32% 44%;          /* dusty blue   */
+  --chart-5: 282 18% 50%;          /* muted plum   */
+
+  /* ---- Sidebar (slightly deeper paper) ---- */
+  --sidebar-background: 40 34% 91%;
+  --sidebar-foreground: 30 12% 32%;
+  --sidebar-primary: 28 18% 17%;
+  --sidebar-primary-foreground: 42 46% 97%;
+  --sidebar-accent: 36 30% 86%;
+  --sidebar-accent-foreground: 28 18% 17%;
+  --sidebar-border: 36 22% 82%;
+  --sidebar-ring: 16 49% 47%;
+
+  /* ---- Type families ---- */
+  --font-serif: 'Newsreader', Georgia, 'Times New Roman', serif;
+  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+[data-theme="paper"].dark {
+  /* ---- Base surfaces & ink (DARK / warm dark grey — NOT pure black) ---- */
+  --background: 28 9% 13%;         /* warm dark grey */
+  --foreground: 40 30% 90%;        /* warm cream */
+  --card: 28 9% 16%;
+  --card-foreground: 40 30% 90%;
+  --popover: 28 9% 16%;
+  --popover-foreground: 40 30% 90%;
+
+  /* ---- Primary = cream (inverted, calm) ---- */
+  --primary: 40 30% 90%;
+  --primary-foreground: 28 12% 14%;
+
+  --secondary: 28 8% 22%;
+  --secondary-foreground: 40 30% 90%;
+  --muted: 28 8% 22%;
+  --muted-foreground: 36 14% 62%;
+  --accent: 28 8% 24%;
+  --accent-foreground: 40 30% 90%;
+
+  /* ---- Terracotta, lightened for dark paper ---- */
+  --brand: 16 56% 57%;
+  --brand-foreground: 28 12% 14%;
+  --brand-muted: 16 24% 22%;
+
+  --destructive: 6 50% 53%;
+  --destructive-foreground: 40 30% 92%;
+  --success: 150 30% 52%;
+  --warning: 34 62% 56%;
+
+  --border: 28 8% 24%;
+  --input: 28 8% 24%;
+  --ring: 16 56% 57%;
+
+  --chart-1: 16 56% 57%;
+  --chart-2: 32 56% 58%;
+  --chart-3: 150 28% 52%;
+  --chart-4: 205 36% 56%;
+  --chart-5: 282 24% 62%;
+
+  --sidebar-background: 28 9% 11%;
+  --sidebar-foreground: 36 14% 66%;
+  --sidebar-primary: 40 30% 90%;
+  --sidebar-primary-foreground: 28 12% 14%;
+  --sidebar-accent: 28 8% 20%;
+  --sidebar-accent-foreground: 40 30% 90%;
+  --sidebar-border: 28 8% 20%;
+  --sidebar-ring: 16 56% 57%;
+}
+
+/* ============================================================================
+   SEMANTIC TYPE SCALE
+   Reading-room rhythm: serif for display & section titles, sans for UI/body,
+   mono for data identifiers. Tabular numerals everywhere numbers are compared.
+   ============================================================================ */
+
+[data-theme="paper"] .tk-display {            /* hero numbers, Wrapped headline */
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: 3rem;       /* 48px */
+  line-height: 1.04;
+  letter-spacing: -0.015em;
+}
+
+[data-theme="paper"] .tk-h1 {                 /* page title */
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: 1.5rem;     /* 24px */
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+[data-theme="paper"] .tk-h2 {                 /* card / section title */
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 0.875rem;   /* 14px */
+  line-height: 1.3;
+  letter-spacing: 0;
+}
+
+[data-theme="paper"] .tk-stat {               /* stat-card big figure */
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: 1.75rem;    /* 28px */
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+[data-theme="paper"] .tk-body {               /* default paragraph */
+  font-family: var(--font-sans);
+  font-weight: 400;
+  font-size: 0.875rem;   /* 14px */
+  line-height: 1.55;
+}
+
+[data-theme="paper"] .tk-label {              /* field labels, card descriptions */
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 0.75rem;    /* 12px */
+  line-height: 1.4;
+  color: hsl(var(--muted-foreground));
+}
+
+[data-theme="paper"] .tk-overline {           /* uppercase eyebrow */
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 0.625rem;   /* 10px */
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+
+[data-theme="paper"] .tk-num {                /* tabular numerals in tables / metrics */
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+
+[data-theme="paper"] .tk-mono {               /* model ids, slugs, raw events, code */
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;  /* 13px */
+  font-variant-numeric: tabular-nums;
+}

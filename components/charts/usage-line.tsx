@@ -30,7 +30,8 @@ export function UsageLineChart({
   height = 220,
 }: UsageLineChartProps) {
   const dataKey = metric;
-  const color = metric === "tokens" ? "#6366f1" : "#10b981";
+  // tokens → chart-1, cost → chart-2; both follow the active theme palette.
+  const color = metric === "tokens" ? "hsl(var(--chart-1))" : "hsl(var(--chart-2))";
 
   return (
     <ResponsiveContainer width="100%" height={height}>

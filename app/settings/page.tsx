@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ALL_GRANULARITIES, DEFAULT_PREFS, loadPrefs, savePrefs, type Preferences } from "@/lib/preferences";
+import { useTheme } from "@/lib/themes/use-theme";
 
 const REFRESH_OPTIONS = [
   { sec: 0, label: "Off" },
@@ -34,6 +35,9 @@ const TIMEZONES = [
 ];
 
 export default function SettingsPage() {
+  const { slug, mode, setTheme, toggleMode, themes, hydrated } = useTheme();
+  const current = themes.find((t) => t.slug === slug);
+
   const [prefs, setPrefs] = useState<Preferences>(DEFAULT_PREFS);
   const [savedAt, setSavedAt] = useState<string | null>(null);
 
@@ -67,6 +71,55 @@ export default function SettingsPage() {
         </div>
         {savedAt && <p className="text-xs text-emerald-500">Saved at {savedAt}</p>}
       </div>
+
+      <Card>
+        <CardHeader className="px-5">
+          <CardTitle className="text-sm font-medium">Appearance</CardTitle>
+          <CardDescription>Choose a theme. Saved to this browser.</CardDescription>
+        </CardHeader>
+        <CardContent className="px-5 space-y-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            {themes.map((t) => {
+              const isActive = hydrated && t.slug === slug;
+              return (
+                <Card
+                  key={t.slug}
+                  onClick={() => setTheme(t.slug)}
+                  className={`cursor-pointer p-3 transition ${
+                    isActive ? "ring-2 ring-ring" : "hover:bg-muted/40"
+                  }`}
+                >
+                  {/* Swatch row: inline data-theme so each card previews its own palette */}
+                  <div
+                    data-theme={t.slug}
+                    className="flex h-8 mb-2 rounded overflow-hidden border"
+                  >
+                    <div className="flex-1 bg-background" />
+                    <div className="flex-1 bg-primary" />
+                    <div className="flex-1 bg-accent" />
+                    <div className="flex-1 bg-destructive" />
+                  </div>
+                  <div className="text-sm font-medium">{t.name}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">{t.description}</div>
+                  {!t.supportsLightDark && (
+                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground mt-1.5">
+                      Dark only
+                    </div>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+          {current?.supportsLightDark && (
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-muted-foreground">Mode</span>
+              <Button variant="outline" size="sm" onClick={toggleMode}>
+                {mode === "dark" ? "Switch to light" : "Switch to dark"}
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="px-5">

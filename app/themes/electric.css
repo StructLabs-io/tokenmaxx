@@ -1,0 +1,125 @@
+/* Tokenmaxx theme: electric
+   Generated from Claude Designs export at /tmp/tokenmaxx-themes/electric/colors_and_type.css
+   Transformation: :root -> [data-theme="electric"]
+                   .dark -> [data-theme="electric"].dark
+                   helper selectors prefixed with [data-theme="electric"]
+   Do not hand-edit; regenerate from source if the theme changes.
+*/
+
+/* ============================================================================
+   TOKENMAXX — "Electric" Theme
+   Design tokens for the Tokenmaxx AI usage-tracking dashboard.
+   Dark mode only. Stack: Next.js 15 + shadcn/ui + Tailwind v4, HSL CSS vars.
+
+   HSL triplets (no hsl() wrapper) so they drop straight into the shadcn
+   globals.css pattern: color: hsl(var(--primary)).
+   Hex equivalents are noted in comments for quick reference.
+   ============================================================================ */
+
+[data-theme="electric"] {
+  /* ---- Core surfaces -------------------------------------------------- */
+  --background: 222 26% 6%;          /* #0B0E13  near-black, cool */
+  --foreground: 195 16% 96%;         /* #F3F6F6  off-white, faint cool tint */
+  --card: 222 22% 9%;                /* #12151C  raised panel */
+  --card-foreground: 195 16% 96%;    /* #F3F6F6 */
+  --popover: 222 22% 10%;            /* #14171F  menus / tooltips */
+  --popover-foreground: 195 16% 96%;
+
+  /* ---- Brand / interactive ------------------------------------------- */
+  --primary: 172 100% 47%;           /* #00F0D0  electric cyan */
+  --primary-foreground: 222 40% 6%;  /* #090C12  dark text ON cyan */
+
+  /* Magenta is the secondary brand accent — highlights, focus glows,
+     the #2 data series, "live" pulses. Use sparingly against cyan. */
+  --magenta: 338 100% 59%;           /* #FF2E7B */
+  --magenta-foreground: 222 40% 6%;
+
+  /* ---- Subtle surfaces (shadcn semantic) ------------------------------ */
+  --secondary: 222 16% 15%;          /* #20242C  chips, secondary buttons */
+  --secondary-foreground: 195 16% 96%;
+  --muted: 222 16% 15%;              /* #20242C  track fills, table stripes */
+  --muted-foreground: 214 14% 64%;   /* #96A1B0  labels, captions */
+  --accent: 222 18% 16%;             /* #22262F  hover surface */
+  --accent-foreground: 195 16% 96%;
+
+  /* ---- Status -------------------------------------------------------- */
+  --destructive: 356 90% 62%;        /* #F54753  neon-tuned red (≠ magenta) */
+  --destructive-foreground: 195 16% 96%;
+  --success: 150 84% 50%;            /* #14EB80  neon green */
+  --warning: 40 100% 58%;            /* #FFB829  amber */
+
+  /* ---- Lines & focus -------------------------------------------------- */
+  --border: 220 16% 17%;             /* #242932 */
+  --input: 220 16% 17%;
+  --ring: 172 100% 47%;              /* cyan focus ring */
+  --radius: 0.5rem;                  /* 8px — the one radius */
+
+  /* ---- Chart series — 5 distinct on near-black ------------------------ */
+  --chart-1: 172 100% 47%;           /* #00F0D0  cyan */
+  --chart-2: 338 100% 59%;           /* #FF2E7B  magenta */
+  --chart-3: 265 90% 68%;            /* #A164F7  violet */
+  --chart-4: 40 100% 58%;            /* #FFB829  amber */
+  --chart-5: 150 84% 50%;            /* #14EB80  green */
+
+  /* ---- Sidebar (slightly deeper than content) ------------------------- */
+  --sidebar-background: 224 28% 5%;  /* #080A0F */
+  --sidebar-foreground: 214 14% 70%;
+  --sidebar-primary: 172 100% 47%;
+  --sidebar-primary-foreground: 222 40% 6%;
+  --sidebar-accent: 222 18% 13%;     /* active/hover nav item */
+  --sidebar-accent-foreground: 195 16% 96%;
+  --sidebar-border: 220 16% 14%;
+  --sidebar-ring: 172 100% 47%;
+
+  /* ============================================================
+     TYPOGRAPHY
+     System sans (Geist in-app; system stack as the safe fallback).
+     Geist Mono for code, IDs, raw event payloads. Tabular numerals
+     everywhere numbers line up in columns.
+     ============================================================ */
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system,
+               "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", "JetBrains Mono",
+               "Menlo", "Consolas", monospace;
+
+  /* Type scale — compact, dashboard-dense */
+  --text-display: 700 1.875rem/1.15 var(--font-sans);   /* 30px  Wrapped hero */
+  --text-h1: 600 1.25rem/1.3 var(--font-sans);          /* 20px  page title */
+  --text-h2: 600 0.875rem/1.4 var(--font-sans);         /* 14px  section head */
+  --text-stat: 700 1.5rem/1.1 var(--font-sans);         /* 24px  stat-card value */
+  --text-body: 400 0.875rem/1.5 var(--font-sans);       /* 14px  body */
+  --text-sm: 400 0.8125rem/1.45 var(--font-sans);       /* 13px  table cells */
+  --text-caption: 400 0.75rem/1.4 var(--font-sans);     /* 12px  muted captions */
+  --text-micro: 500 0.625rem/1.3 var(--font-sans);      /* 10px  uppercase eyebrow */
+  --text-mono: 400 0.8125rem/1.5 var(--font-mono);      /* 13px  code / IDs */
+
+  --tracking-tight: -0.01em;     /* headings */
+  --tracking-wide: 0.06em;       /* uppercase eyebrows */
+}
+
+/* ----------------------------------------------------------------------------
+   Semantic element defaults — opt in by importing this file.
+   Numbers use tabular-nums so columns align (core dashboard requirement).
+   ---------------------------------------------------------------------------- */
+[data-theme="electric"] body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font: var(--text-body);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "rlig" 1, "calt" 1;
+}
+
+[data-theme="electric"] h1 { font: var(--text-h1); letter-spacing: var(--tracking-tight); margin: 0; }
+[data-theme="electric"] h2 { font: var(--text-h2); margin: 0; }
+[data-theme="electric"] .stat-value { font: var(--text-stat); font-variant-numeric: tabular-nums; }
+[data-theme="electric"] .eyebrow {
+  font: var(--text-micro);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+[data-theme="electric"] .caption { font: var(--text-caption); color: hsl(var(--muted-foreground)); }
+[data-theme="electric"] code, [data-theme="electric"] .mono { font: var(--text-mono); }
+
+/* Tabular numerals — apply to any numeric column / stat */
+[data-theme="electric"] .tnum, [data-theme="electric"] td.num, [data-theme="electric"] .tabular { font-variant-numeric: tabular-nums; }

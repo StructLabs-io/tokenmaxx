@@ -481,7 +481,7 @@ export function ProjectsClient({
                         <div className="flex items-center gap-2">
                           <span
                             className="h-2 w-2 rounded-full shrink-0 opacity-70"
-                            style={{ background: "#6366f1" }}
+                            style={{ background: "hsl(var(--chart-1))" }}
                           />
                           <span className="text-sm">{project.display_name}</span>
                         </div>

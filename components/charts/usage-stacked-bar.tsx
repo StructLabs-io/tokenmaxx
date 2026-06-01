@@ -17,10 +17,15 @@ interface Props {
   height?: number;
 }
 
-// Consistent color palette for stacked series (10 distinct).
+// CSS-var palette: uses theme chart tokens so colors follow the active theme.
+// Five slots defined by the theme system; indices beyond 5 wrap back to slot 1.
+// The wrapping is intentional — in practice, dashboards rarely show >5 series.
 const PALETTE = [
-  "#6366f1", "#ec4899", "#10b981", "#f59e0b", "#06b6d4",
-  "#a855f7", "#ef4444", "#84cc16", "#14b8a6", "#f97316",
+  "hsl(var(--chart-1))",
+  "hsl(var(--chart-2))",
+  "hsl(var(--chart-3))",
+  "hsl(var(--chart-4))",
+  "hsl(var(--chart-5))",
 ];
 
 export function UsageStackedBarChart({ buckets, series, height = 220 }: Props) {

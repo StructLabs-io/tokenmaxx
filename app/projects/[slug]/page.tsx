@@ -53,7 +53,7 @@ export default async function ProjectDetailPage({ params }: Props) {
       <div className="flex items-center gap-3">
         <span
           className="h-4 w-4 rounded-full shrink-0"
-          style={{ background: "#6366f1" }}
+          style={{ background: "hsl(var(--chart-1))" }}
         />
         <div>
           <h1 className="text-xl font-semibold tracking-tight">

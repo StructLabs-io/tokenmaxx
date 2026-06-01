@@ -1,0 +1,195 @@
+/* Tokenmaxx theme: brutalist
+   Generated from Claude Designs export at /tmp/tokenmaxx-themes/brutalist/colors_and_type.css
+   Transformation: :root -> [data-theme="brutalist"]
+                   .dark -> [data-theme="brutalist"].dark
+                   helper selectors prefixed with [data-theme="brutalist"]
+   Do not hand-edit; regenerate from source if the theme changes.
+*/
+
+/* =============================================================================
+   TOKENMAXX — BRUTALIST THEME
+   Design tokens: color + type. Stark monochrome + ONE electric-blue accent.
+   -----------------------------------------------------------------------------
+   The source product (StructLabs-io/tokenmaxx) is a Next.js 15 + shadcn/ui +
+   Tailwind v4 app using HSL CSS variables. This file keeps that exact token
+   contract (so it drops straight into the codebase) but re-tunes every value
+   to a brutalist system: off-white / off-black base, heavy near-foreground
+   borders, near-square corners (0.125rem), geometric sans + mono numerals.
+
+   Accent = ONE saturated electric blue (--brand). Charts = brand + 4 greys.
+   HSL triplets only (no OKLCH), to match the codebase's hsl(var(--x)) usage.
+============================================================================= */
+
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+/* ------------------------------------------------------------------ *
+ * 1. LIGHT THEME  — off-white paper, off-black ink                    *
+ * ------------------------------------------------------------------ */
+[data-theme="brutalist"] {
+  /* surfaces */
+  --background: 0 0% 96%;          /* off-white, never pure */
+  --foreground: 0 0% 9%;           /* off-black ink */
+  --card: 0 0% 100%;               /* crisp white panels on the off-white field */
+  --card-foreground: 0 0% 9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 0 0% 9%;
+
+  /* actions — primary is solid ink, not the accent */
+  --primary: 0 0% 9%;
+  --primary-foreground: 0 0% 98%;
+  --secondary: 0 0% 100%;
+  --secondary-foreground: 0 0% 9%;
+
+  /* quiet tones */
+  --muted: 0 0% 92%;
+  --muted-foreground: 0 0% 38%;
+  --accent: 0 0% 90%;              /* subtle hover fill (NOT the brand blue) */
+  --accent-foreground: 0 0% 9%;
+
+  /* THE accent — one saturated electric blue, used deliberately */
+  --brand: 226 100% 53%;
+  --brand-foreground: 0 0% 100%;
+
+  --destructive: 4 86% 50%;
+  --destructive-foreground: 0 0% 100%;
+
+  /* structure — HEAVY borders, close to the foreground */
+  --border: 0 0% 13%;
+  --input: 0 0% 13%;
+  --ring: 226 100% 53%;
+
+  /* near-square corners */
+  --radius: 0.125rem;
+
+  /* charts — accent + 4 greyscale steps */
+  --chart-1: 226 100% 53%;
+  --chart-2: 0 0% 24%;
+  --chart-3: 0 0% 44%;
+  --chart-4: 0 0% 62%;
+  --chart-5: 0 0% 80%;
+
+  /* sidebar */
+  --sidebar-background: 0 0% 100%;
+  --sidebar-foreground: 0 0% 9%;
+  --sidebar-primary: 226 100% 53%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 0 0% 92%;
+  --sidebar-accent-foreground: 0 0% 9%;
+  --sidebar-border: 0 0% 13%;
+  --sidebar-ring: 226 100% 53%;
+
+  /* type families */
+  --font-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+}
+
+/* ------------------------------------------------------------------ *
+ * 2. DARK THEME  — the product ships dark by default                  *
+ * ------------------------------------------------------------------ */
+[data-theme="brutalist"].dark {
+  --background: 0 0% 7%;
+  --foreground: 0 0% 96%;
+  --card: 0 0% 10%;
+  --card-foreground: 0 0% 96%;
+  --popover: 0 0% 10%;
+  --popover-foreground: 0 0% 96%;
+
+  --primary: 0 0% 96%;             /* white ink blocks on black */
+  --primary-foreground: 0 0% 8%;
+  --secondary: 0 0% 14%;
+  --secondary-foreground: 0 0% 96%;
+
+  --muted: 0 0% 15%;
+  --muted-foreground: 0 0% 60%;
+  --accent: 0 0% 16%;
+  --accent-foreground: 0 0% 96%;
+
+  --brand: 224 100% 64%;           /* lifted electric blue for dark contrast */
+  --brand-foreground: 0 0% 100%;
+
+  --destructive: 2 85% 62%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 0 0% 38%;              /* strong, visible grey rule */
+  --input: 0 0% 38%;
+  --ring: 224 100% 64%;
+
+  --chart-1: 224 100% 64%;
+  --chart-2: 0 0% 82%;
+  --chart-3: 0 0% 62%;
+  --chart-4: 0 0% 45%;
+  --chart-5: 0 0% 30%;
+
+  --sidebar-background: 0 0% 9%;
+  --sidebar-foreground: 0 0% 96%;
+  --sidebar-primary: 224 100% 64%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 0 0% 16%;
+  --sidebar-accent-foreground: 0 0% 96%;
+  --sidebar-border: 0 0% 38%;
+  --sidebar-ring: 224 100% 64%;
+}
+
+/* ============================================================================
+   3. SEMANTIC TYPE SCALE
+   Strong weight contrast: 400 body vs 700 display. Tight display tracking.
+   Numerals lean on the mono family (data-first, tabular by construction).
+============================================================================ */
+
+[data-theme="brutalist"] {
+  /* display / headings — geometric sans, heavy, tight */
+  --text-display:   { } ; /* see .t-display below */
+}
+
+[data-theme="brutalist"] .t-display {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: 3rem;        /* 48px */
+  line-height: 1.0;
+  letter-spacing: -0.03em;
+}
+[data-theme="brutalist"] .t-h1 {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: 1.375rem;    /* 22px — page titles */
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+[data-theme="brutalist"] .t-h2 {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 1rem;        /* 16px — card titles */
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+[data-theme="brutalist"] .t-stat {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 1.75rem;     /* 28px — big numbers */
+  line-height: 1.0;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+[data-theme="brutalist"] .t-body {
+  font-family: var(--font-sans);
+  font-weight: 400;
+  font-size: 0.875rem;    /* 14px */
+  line-height: 1.5;
+}
+[data-theme="brutalist"] .t-label {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 0.6875rem;   /* 11px — uppercase eyebrow */
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+[data-theme="brutalist"] .t-mono {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  font-size: 0.8125rem;   /* 13px — data, code, table figures */
+  font-variant-numeric: tabular-nums;
+}
+
+/* Utility: tabular numbers anywhere */
+[data-theme="brutalist"] .tabular { font-variant-numeric: tabular-nums; }

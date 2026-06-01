@@ -25,7 +25,7 @@ interface UsageBarChartProps {
 export function UsageBarChart({
   data,
   height = 180,
-  color = "#6366f1",
+  color = "hsl(var(--chart-1))",
 }: UsageBarChartProps) {
   return (
     <ResponsiveContainer width="100%" height={height}>
