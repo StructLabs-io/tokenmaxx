@@ -1,0 +1,25 @@
+version: "3.9"
+
+# Tokenmaxx — n9c-server compose stack (P8).
+# Sits behind Caddy for auto-TLS termination at tokenmaxx.structlabs.io.
+
+services:
+  app:
+    build: .
+    image: tokenmaxx:latest
+    container_name: tokenmaxx
+    restart: unless-stopped
+    env_file:
+      - /root/.config/tokenmaxx/web.env
+    ports:
+      - "127.0.0.1:3000:3000"   # bind to loopback; Caddy proxies in
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"

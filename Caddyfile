@@ -1,0 +1,14 @@
+# /etc/caddy/Caddyfile — n9c-server reverse proxy for Tokenmaxx (P8).
+# Auto-TLS via Let's Encrypt; HTTP/2 + HTTP/3 enabled by default.
+
+tokenmaxx.structlabs.io {
+    encode gzip zstd
+    reverse_proxy 127.0.0.1:3000
+    log {
+        output file /var/log/caddy/tokenmaxx.log {
+            roll_size 10mb
+            roll_keep 5
+        }
+        format json
+    }
+}

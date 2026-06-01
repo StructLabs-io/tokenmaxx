@@ -19,6 +19,9 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  // P8: standalone output for the Docker image that runs on n9c-server.
+  // OpenNext for Cloudflare ignores this and reads its own build.
+  output: "standalone",
 };
 
 export default nextConfig;
