@@ -84,7 +84,24 @@ type EventRow = {
   cost_usd: string | number | null;
   project_id: string | null;
   workspace_id: string | null;
+  capture_method: string | null;
 };
+
+/**
+ * Tokenmaxx events all live under one workspace (per current design), so
+ * MacBook vs Server is encoded in the capture_method 4th segment instead:
+ *   *.ben_macbook         -> MacBook (current local-capture)
+ *   *.openclaw / *.server -> Server (server-capture)
+ *   *.personal_dev        -> MacBook (legacy jsonl-walker context)
+ */
+function sourceFromCaptureMethod(captureMethod: string | null): { icon: string; label: string } {
+  if (!captureMethod) return { icon: '📟', label: 'Unknown' };
+  const parts = captureMethod.split('.');
+  const seg4 = (parts[3] ?? '').toLowerCase();
+  if (seg4.includes('mac') || seg4 === 'personal_dev') return { icon: '💻', label: 'MacBook' };
+  if (seg4.includes('openclaw') || seg4.includes('server')) return { icon: '🖥', label: 'Server' };
+  return { icon: '📟', label: seg4 || 'Unknown' };
+}
 
 function sumCost(rows: EventRow[]): number {
   return rows.reduce((s, e) => s + parseFloat(String(e.cost_usd ?? 0)), 0);
@@ -94,28 +111,21 @@ function sumTokens(rows: EventRow[]): number {
   return rows.reduce((s, e) => s + (e.total_tokens ?? 0), 0);
 }
 
-function perWorkspaceCostLines(
+function perSourceCostLines(
   events: EventRow[],
-  wsNames: Record<string, string>,
   myrRate: number,
   showMyr = false,
 ): string[] {
-  const byWs: Record<string, number> = {};
+  // Bucket by source (MacBook / Server / ...) derived from capture_method
+  const bySource: Record<string, { icon: string; label: string; cost: number }> = {};
   for (const e of events) {
-    const key = e.workspace_id ?? '__unknown__';
-    byWs[key] = (byWs[key] ?? 0) + parseFloat(String(e.cost_usd ?? 0));
+    const { icon, label } = sourceFromCaptureMethod(e.capture_method);
+    if (!bySource[label]) bySource[label] = { icon, label, cost: 0 };
+    bySource[label].cost += parseFloat(String(e.cost_usd ?? 0));
   }
-  // Build label/cost rows, sorted by cost desc
-  const entries = Object.entries(byWs)
-    .map(([wsId, cost]) => {
-      const name = wsNames[wsId] ?? wsId.slice(0, 12);
-      const { icon, label } = classifyWorkspace(name);
-      return { icon, label, cost };
-    })
-    .sort((a, b) => b.cost - a.cost);
+  const entries = Object.values(bySource).sort((a, b) => b.cost - a.cost);
 
-  // Pad colons so the $ amounts line up: longest label gets one trailing space,
-  // shorter labels get more.
+  // Pad colons so $ amounts align: "MacBook: $X", "Server:  $X", "Total:   $X"
   const labels = [...entries.map((e) => e.label), 'Total'];
   const widest = Math.max(...labels.map((l) => l.length));
   const pad = (label: string) => label + ':' + ' '.repeat(widest - label.length + 1);
@@ -124,7 +134,7 @@ function perWorkspaceCostLines(
   for (const e of entries) {
     lines.push(`${e.icon} ${pad(e.label)}$${fmtUsd(e.cost)} USD`);
   }
-  const total = Object.values(byWs).reduce((s, c) => s + c, 0);
+  const total = entries.reduce((s, e) => s + e.cost, 0);
   const myrStr = showMyr ? ` (MYR ${fmtMyr(total, myrRate)})` : '';
   lines.push(`💰 ${pad('Total')}$${fmtUsd(total)} USD${myrStr}`);
   return lines;
@@ -168,7 +178,7 @@ Deno.serve(async (_req: Request) => {
       for (let offset = 0; offset < 200_000; offset += PAGE) {
         const { data: page, error: pageErr } = await supabase
           .from('usage_events')
-          .select('date_utc, provider, model, total_tokens, cost_usd, project_id, workspace_id')
+          .select('date_utc, provider, model, total_tokens, cost_usd, project_id, workspace_id, capture_method')
           .gte('date_utc', thirtyDayStart)
           .lte('date_utc', dateStr)
           .order('date_utc', { ascending: true })
@@ -302,10 +312,10 @@ Deno.serve(async (_req: Request) => {
       '',
       '── Last 24 hours ──',
       `⚡ ${fmtTokens(tokens24h)} tokens | ${events24h.length.toLocaleString()} events`,
-      ...perWorkspaceCostLines(events24h, wsNames, myrRate, true),
+      ...perSourceCostLines(events24h, myrRate, true),
       '',
       '── Last 7 days ──',
-      ...perWorkspaceCostLines(events7d, wsNames, myrRate, true),
+      ...perSourceCostLines(events7d, myrRate, true),
       `📈 Avg/day: $${fmtUsd(sevenDayAvg)} USD | Delta vs 30d: ${deltaSign}${deltaPct.toFixed(1)}%`,
     ];
 
@@ -328,7 +338,7 @@ Deno.serve(async (_req: Request) => {
 
     lines.push('');
     lines.push('── Last 30 days ──');
-    lines.push(...perWorkspaceCostLines(allEvents, wsNames, myrRate, true));
+    lines.push(...perSourceCostLines(allEvents, myrRate, true));
     lines.push(`Reporting window: ${thirtyDayStart} – ${dateStr}`);
 
     if (quotaLines.length > 0) {
@@ -358,6 +368,7 @@ Deno.serve(async (_req: Request) => {
         cost30dUsd: daily30dCost,
         sevenDayAvgUsd: sevenDayAvg,
         deltaPct,
+        sentText: lines.join('\n'),
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     );

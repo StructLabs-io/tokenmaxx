@@ -48,6 +48,10 @@ const USER_TIMEZONE = process.env.TOKENMAXX_USER_TIMEZONE || 'Asia/Kuala_Lumpur'
 // the last N days. Supabase upsert dedupes. This mirrors the ECIS pattern.
 const LOOKBACK_DAYS = parseInt(process.env.TOKENMAXX_LOOKBACK_DAYS || '7', 10);
 
+// 4th segment of capture_method — distinguishes per-machine context.
+// MacBook default: ben_macbook. Override on the n9c server with `openclaw`.
+const CAPTURE_CONTEXT = process.env.TOKENMAXX_CAPTURE_CONTEXT || 'ben_macbook';
+
 // Convert an ISO UTC timestamp to a YYYY-MM-DD date in the given IANA timezone.
 function localDateInTz(isoUtc, tz) {
   // en-CA renders as YYYY-MM-DD natively.
@@ -337,7 +341,7 @@ Environment:
       date_local: localDateInTz(session.ts, USER_TIMEZONE),
       provider: 'openai-codex',
       model: session.model,
-      capture_method: `openai-codex.ccusage.cli.ben_macbook`,
+      capture_method: `openai-codex.ccusage.cli.${CAPTURE_CONTEXT}`,
       aggregation_grain: 'session',
       input_tokens: session.inputTokens,
       output_tokens: session.outputTokens,
@@ -414,7 +418,7 @@ function collectClaudeViaCcusage(workspaceId, userId, lookbackDays) {
         date_local: date, // ccusage already aggregates by calendar day
         provider: 'anthropic',
         model: modelName,
-        capture_method: 'anthropic.ccusage.cli.ben_macbook',
+        capture_method: `anthropic.ccusage.cli.${CAPTURE_CONTEXT}`,
         aggregation_grain: 'daily',
         session_id: `daily-${date}-${modelName}`,
         input_tokens: input,
