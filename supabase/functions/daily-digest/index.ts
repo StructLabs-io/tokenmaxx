@@ -132,23 +132,36 @@ Deno.serve(async (_req: Request) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Reference date = yesterday UTC
-    const yesterday = new Date();
-    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
-    const dateStr = yesterday.toISOString().slice(0, 10);
+    // Reference date = yesterday in workspace timezone (MYT for Ben).
+    // 07:00 MYT cron = 23:00 UTC previous day, so naive UTC math is off by 1.
+    const WORKSPACE_TZ = Deno.env.get('DIGEST_TIMEZONE') ?? 'Asia/Kuala_Lumpur';
+    const todayLocal = new Intl.DateTimeFormat('en-CA', {
+      timeZone: WORKSPACE_TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(new Date());
+    const dateStr = addDaysUtc(todayLocal, -1);
 
     const sevenDayStart = addDaysUtc(dateStr, -6);
     const thirtyDayStart = addDaysUtc(dateStr, -29);
 
     // --- Fetch 30d of events (covers all 3 periods) ---
-    const { data: events30d, error: eventsError } = await supabase
-      .from('usage_events')
-      .select('date_utc, provider, model, total_tokens, cost_usd, project_id, workspace_id')
-      .gte('date_utc', thirtyDayStart)
-      .lte('date_utc', dateStr);
-
-    if (eventsError) throw new Error(`usage_events query: ${eventsError.message}`);
-    const allEvents: EventRow[] = (events30d ?? []) as EventRow[];
+    // PostgREST caps at 1000 rows per request — paginate to get every row.
+    const allEvents: EventRow[] = [];
+    {
+      const PAGE = 1000;
+      for (let offset = 0; offset < 200_000; offset += PAGE) {
+        const { data: page, error: pageErr } = await supabase
+          .from('usage_events')
+          .select('date_utc, provider, model, total_tokens, cost_usd, project_id, workspace_id')
+          .gte('date_utc', thirtyDayStart)
+          .lte('date_utc', dateStr)
+          .order('date_utc', { ascending: true })
+          .range(offset, offset + PAGE - 1);
+        if (pageErr) throw new Error(`usage_events query: ${pageErr.message}`);
+        const rows = (page ?? []) as EventRow[];
+        allEvents.push(...rows);
+        if (rows.length < PAGE) break;
+      }
+    }
 
     // Partition into periods
     const events24h = allEvents.filter((e) => e.date_utc === dateStr);

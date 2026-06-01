@@ -109,7 +109,8 @@ async function batchInsertEvents(rows, dryRun) {
     const chunk = rows.slice(i, i + BATCH);
     try {
       await supabaseRequest('usage_events', 'POST', chunk, {
-        Prefer: 'resolution=ignore-duplicates,return=minimal',
+        // Upsert by unique constraint — mirrors ECIS pattern + Tokenmaxx local-capture.
+        Prefer: 'resolution=merge-duplicates,return=minimal',
       });
       inserted += chunk.length;
     } catch (err) {

@@ -32,6 +32,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 const HOME = process.env.HOME || require('os').homedir();
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -42,6 +43,10 @@ let STATE_FILE = process.env.TOKENMAXX_LOCAL_STATE_FILE || path.join(HOME, '.con
 
 // User's local timezone for date_local derivation. Defaults to MYT for Ben's MacBook.
 const USER_TIMEZONE = process.env.TOKENMAXX_USER_TIMEZONE || 'Asia/Kuala_Lumpur';
+
+// Rolling-window backfill: each run re-processes session files modified in
+// the last N days. Supabase upsert dedupes. This mirrors the ECIS pattern.
+const LOOKBACK_DAYS = parseInt(process.env.TOKENMAXX_LOOKBACK_DAYS || '7', 10);
 
 // Convert an ISO UTC timestamp to a YYYY-MM-DD date in the given IANA timezone.
 function localDateInTz(isoUtc, tz) {
@@ -102,7 +107,12 @@ async function batchInsertEvents(rows, dryRun) {
     const chunk = rows.slice(i, i + BATCH);
     try {
       await supabaseRequest('usage_events', 'POST', chunk, {
-        Prefer: 'resolution=ignore-duplicates,return=minimal',
+        // merge-duplicates = upsert against the unique constraint
+        // (workspace_id, user_id, capture_method, session_id, model, date_utc).
+        // Re-running the script with the same files updates totals if they
+        // changed; identical re-inserts are no-ops. Mirrors the ECIS
+        // upsert pattern.
+        Prefer: 'resolution=merge-duplicates,return=minimal',
       });
       inserted += chunk.length;
     } catch (err) {
@@ -299,22 +309,25 @@ Environment:
   console.log(`Workspace: ${workspaceId}`);
   console.log(`User: ${userId} (${userSlug})\n`);
 
-  const state = loadState();
-  const sessionState = state['codex_sessions'] || { files: {} };
+  // Rolling-window scan: always re-process the last LOOKBACK_DAYS days of
+  // session files. We don't gate on a state file — Supabase upsert dedupes.
+  // This matches the ECIS pattern: idempotent rescan + upsert means a day
+  // that failed to capture (script broken, DB down, etc.) gets backfilled
+  // automatically on the next run.
+  const lookbackMs = LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
+  const cutoffMs = Date.now() - lookbackMs;
 
-  const files = listJsonlFiles(CODEX_SESSIONS_DIR)
+  const allFiles = listJsonlFiles(CODEX_SESSIONS_DIR)
     .map(fpath => ({ fpath, stat: fs.statSync(fpath) }))
+    .filter(({ stat }) => stat.mtimeMs >= cutoffMs)
     .sort((a, b) => a.stat.mtimeMs - b.stat.mtimeMs);
 
-  console.log(`Found ${files.length} Codex session files`);
+  console.log(`Scanning ${allFiles.length} session files modified in last ${LOOKBACK_DAYS} days`);
 
   const rows = [];
-  let skipped = 0;
-
-  for (const { fpath, stat } of files) {
-    if (sessionState.files[fpath] === stat.mtimeMs) { skipped++; continue; }
+  for (const { fpath } of allFiles) {
     const session = parseCodexSession(fpath);
-    if (!session) { sessionState.files[fpath] = stat.mtimeMs; skipped++; continue; }
+    if (!session) continue;
 
     rows.push({
       workspace_id: workspaceId,
@@ -331,24 +344,89 @@ Environment:
       cache_creation_tokens: 0,
       cache_read_tokens: session.cachedTokens,
       token_share_pct: 100.0,
-      _fpath: fpath,
-      _mtime: stat.mtimeMs,
     });
   }
 
-  console.log(`  ${rows.length} new sessions, ${skipped} already captured`);
+  console.log(`  ${rows.length} sessions to upsert`);
+  const codexResult = await batchInsertEvents(rows, dryRun);
+  console.log(`  Codex: ${codexResult.inserted} upserted, ${codexResult.failed} failed`);
 
-  const toWrite = rows.map(({ _fpath, _mtime, ...r }) => r);
-  const result = await batchInsertEvents(toWrite, dryRun);
+  // --- Claude Code (ccusage) sweep — same rolling window + upsert ---
+  console.log('\nClaude Code (ccusage) sweep…');
+  const claudeRows = collectClaudeViaCcusage(workspaceId, userId, LOOKBACK_DAYS);
+  console.log(`  ${claudeRows.length} (date, model) rollups to upsert`);
+  const claudeResult = await batchInsertEvents(claudeRows, dryRun);
+  console.log(`  Claude: ${claudeResult.inserted} upserted, ${claudeResult.failed} failed`);
 
-  if (!dryRun && result.failed === 0) {
-    for (const r of rows) sessionState.files[r._fpath] = r._mtime;
-    state['codex_sessions'] = sessionState;
-    saveState(state);
-    console.log(`State saved to ${STATE_FILE}`);
+  console.log(`\nDone (lookback: ${LOOKBACK_DAYS}d)`);
+}
+
+/**
+ * Pull the last N days of Claude Code usage via the ccusage CLI and
+ * convert to one usage_events row per (date, model). Synthetic session_id
+ * `daily-<date>-<model>` keeps the unique constraint happy and makes upserts
+ * deterministic across runs.
+ */
+function collectClaudeViaCcusage(workspaceId, userId, lookbackDays) {
+  const since = new Date();
+  since.setUTCDate(since.getUTCDate() - lookbackDays);
+  const sinceArg = since.toISOString().slice(0, 10).replace(/-/g, '');
+
+  let raw;
+  try {
+    raw = execFileSync('npx', ['ccusage@latest', 'daily', '--json', '--since', sinceArg], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      maxBuffer: 32 * 1024 * 1024,
+    });
+  } catch (err) {
+    console.error(`  ccusage CLI failed: ${err.message}`);
+    return [];
   }
 
-  console.log(`\nDone: ${result.inserted} inserted, ${skipped} skipped, ${result.failed} failed`);
+  let data;
+  try { data = JSON.parse(raw); }
+  catch (err) {
+    console.error(`  ccusage JSON parse failed: ${err.message}`);
+    return [];
+  }
+
+  const out = [];
+  for (const day of data.daily ?? []) {
+    if (day.agent && day.agent !== 'all' && day.agent !== 'claude') continue;
+    const date = day.period;
+    if (!date) continue;
+    for (const m of day.modelBreakdowns ?? []) {
+      const modelName = m.modelName;
+      if (!modelName || modelName === '<synthetic>') continue;
+      const input = m.inputTokens ?? 0;
+      const output = m.outputTokens ?? 0;
+      const cacheCreate = m.cacheCreationTokens ?? 0;
+      const cacheRead = m.cacheReadTokens ?? 0;
+      const total = input + output + cacheCreate + cacheRead;
+      if (total === 0) continue;
+      const capturedAt = new Date(`${date}T00:00:00Z`).toISOString();
+      out.push({
+        workspace_id: workspaceId,
+        user_id: userId,
+        captured_at: capturedAt,
+        date_utc: date,
+        date_local: date, // ccusage already aggregates by calendar day
+        provider: 'anthropic',
+        model: modelName,
+        capture_method: 'anthropic.ccusage.cli.ben_macbook',
+        aggregation_grain: 'daily',
+        session_id: `daily-${date}-${modelName}`,
+        input_tokens: input,
+        output_tokens: output,
+        cache_creation_tokens: cacheCreate,
+        cache_read_tokens: cacheRead,
+        token_share_pct: 100.0,
+        cost_usd: typeof m.cost === 'number' ? m.cost : null,
+      });
+    }
+  }
+  return out;
 }
 
 main().catch(err => {
