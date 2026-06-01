@@ -77,6 +77,10 @@ export async function fetchAll<T>(
 // ---------------------------------------------------------------------------
 
 export async function getDashboardStats(days = 14): Promise<DashboardStats & { usingSeedData: boolean }> {
+  if (isDemoMode()) {
+    const { demoDashboardStats } = await import("../demo/demo-mode-flag");
+    return demoDashboardStats(days);
+  }
   if (!isServiceRoleConfigured()) {
     return buildSeedStats(days);
   }
