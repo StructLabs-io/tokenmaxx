@@ -69,6 +69,11 @@
 
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const HOME = process.env.HOME || os.homedir();
+
 const initCycleTLS = require('cycletls');
 
 // Chrome 124 JA3 fingerprint — same as quota-tier2.js (bypasses Cloudflare)
@@ -227,6 +232,44 @@ function resolveSessionCookie() {
 }
 
 // --- Fetch chatgpt.com wham/usage via two-step auth ---
+
+/**
+ * Auto-heal: invoke refresh-chatgpt-tokens.py to pull fresh tokens from Brave,
+ * then re-source the env file. Returns true on success.
+ *
+ * Called automatically when fetchWhamUsage fails (likely expired session).
+ * Replaces the manual "go refresh CHATGPT_SESSION_TOKEN_0/1" loop.
+ */
+function autoHealRefreshTokens() {
+  const { execFileSync } = require('child_process');
+  const refreshScript = path.join(__dirname, 'refresh-chatgpt-tokens.py');
+  const envOut = process.env.CHATGPT_ENV_FILE || path.join(HOME, '.config', 'tokenmaxx', 'chatgpt.env');
+  if (!fs.existsSync(refreshScript)) {
+    console.log(`quota-codex: auto-heal — refresh script not found at ${refreshScript}`);
+    return false;
+  }
+  try {
+    const out = execFileSync('python3', [refreshScript, '--out', envOut], {
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    console.log(`quota-codex: ${out.trim()}`);
+  } catch (err) {
+    console.log(`quota-codex: auto-heal failed: ${err.message}`);
+    return false;
+  }
+  // Re-source the env file into process.env so resolveSessionCookie picks it up
+  try {
+    const contents = fs.readFileSync(envOut, 'utf8');
+    for (const line of contents.split('\n')) {
+      const m = line.match(/^([A-Z0-9_]+)=(.+)$/);
+      if (m) process.env[m[1]] = m[2];
+    }
+    return true;
+  } catch (err) {
+    console.log(`quota-codex: auto-heal env-reload failed: ${err.message}`);
+    return false;
+  }
+}
 
 /**
  * Step 1: Exchange session cookies for a short-lived Bearer (accessToken) via
@@ -485,14 +528,29 @@ Optional environment:
   let result;
   try {
     result = await fetchWhamUsage(cookieInfo.cookieString, cycleTLS);
+
+    // Auto-heal: if the first fetch failed, try refreshing the ChatGPT
+    // session tokens from Brave and retry once. Avoids the silent stale
+    // state that triggered the dashboard's stale-Codex banner.
+    if (!result) {
+      console.log('quota-codex: auto-healing — running refresh-chatgpt-tokens.py…');
+      const refreshed = autoHealRefreshTokens();
+      if (refreshed) {
+        const newCookieInfo = resolveSessionCookie();
+        if (newCookieInfo) {
+          console.log(`quota-codex: retrying with refreshed session (${newCookieInfo.source})`);
+          result = await fetchWhamUsage(newCookieInfo.cookieString, cycleTLS);
+        }
+      }
+    }
   } finally {
     await cycleTLS.exit();
   }
 
   if (!result) {
     console.log(
-      'quota-codex: could not fetch wham/usage. Non-fatal — session may be expired.\n' +
-      'Refresh CHATGPT_SESSION_TOKEN_0 / CHATGPT_SESSION_TOKEN_1 in shared/.env.'
+      'quota-codex: still no wham/usage after auto-heal. Brave may not be logged in to chatgpt.com.\n' +
+      'Open Brave (Profile 1) and sign in, then re-run.'
     );
     process.exit(0);
   }
