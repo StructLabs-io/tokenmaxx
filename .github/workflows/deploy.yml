@@ -16,6 +16,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so `git rev-list --count HEAD` is correct
 
       - uses: actions/setup-node@v4
         with:
@@ -26,7 +28,16 @@ jobs:
 
       - run: npm run typecheck
 
+      - name: Compute build identity
+        id: build_id
+        run: |
+          echo "build_number=$(git rev-list --count HEAD)" >> "$GITHUB_OUTPUT"
+          echo "git_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
       - run: npm run build:cf
+        env:
+          TOKENMAXX_BUILD_NUMBER: ${{ steps.build_id.outputs.build_number }}
+          NEXT_PUBLIC_GIT_SHA: ${{ steps.build_id.outputs.git_sha }}
 
       # opennextjs-cloudflare's deploy uploads a new Worker version and
       # binds triggers, but under wrangler 4.x with an API token it does

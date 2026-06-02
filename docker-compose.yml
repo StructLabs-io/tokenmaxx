@@ -1,11 +1,13 @@
-version: "3.9"
-
 # Tokenmaxx — n9c-server compose stack (P8).
 # Sits behind Caddy for auto-TLS termination at tokenmaxx.structlabs.io.
 
 services:
   app:
-    build: .
+    build:
+      context: .
+      args:
+        TOKENMAXX_BUILD_NUMBER: ${TOKENMAXX_BUILD_NUMBER:-dev}
+        NEXT_PUBLIC_GIT_SHA: ${NEXT_PUBLIC_GIT_SHA:-dev}
     image: tokenmaxx:latest
     container_name: tokenmaxx
     restart: unless-stopped

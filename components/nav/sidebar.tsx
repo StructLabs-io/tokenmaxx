@@ -144,6 +144,11 @@ export function Sidebar({ onToggle }: { onToggle?: () => void }) {
           <Github className="h-3.5 w-3.5 shrink-0" />
           Public repo
         </a>
+        <div className="px-3 pt-1 text-[10px] text-sidebar-foreground/60 font-mono">
+          v{process.env.TOKENMAXX_VERSION ?? "dev"}
+          {" · build "}{process.env.TOKENMAXX_BUILD_NUMBER ?? "dev"}
+          {" · "}{process.env.NEXT_PUBLIC_GIT_SHA ?? "dev"}
+        </div>
         <form action="/auth/logout" method="POST">
           <button
             type="submit"
