@@ -30,8 +30,12 @@ export async function middleware(request: NextRequest) {
   // Demo deploy: skip auth gate entirely.
   if (process.env.NEXT_PUBLIC_TOKENMAXX_DEMO === "1") return response;
 
-  const { data: { user } } = await supabase.auth.getUser();
   const path = request.nextUrl.pathname;
+
+  // Public health endpoint for uptime monitors (no auth, no Supabase round-trip).
+  if (path === "/api/health") return response;
+
+  const { data: { user } } = await supabase.auth.getUser();
   const isAuthPath = path.startsWith("/auth/");
 
   // Not signed in → redirect to login (unless we're already on an /auth/* page)
