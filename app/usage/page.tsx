@@ -1,24 +1,34 @@
 /**
  * /usage -- Filterable time-series of usage_events
  *
- * Server component: fetches events + filter options from lib/data.ts.
- * Falls back to seed data when Supabase is not configured.
- * Client component (UsageClient) handles filter UI and chart interactivity.
+ * Server component: fetches initial 14D bucket totals + filter options.
+ * Client component drives the bar chart + paginated events table; both
+ * re-fetch from /api/usage-trend and /api/events when the timeframe or
+ * filters change, so the data the chart shows always matches the window
+ * (rather than being capped at the first 50 events).
  */
 
-import { getUsageEvents, getFilterOptions } from "@/lib/data";
+import { getDashboardStats, getFilterOptions } from "@/lib/data";
 import { Badge } from "@/components/ui/badge";
 import { UsageClient } from "./client";
 
 export const dynamic = "force-dynamic";
 
+const INITIAL_DAYS = 14;
+
 export default async function UsagePage() {
-  const [eventsResult, filterOptions] = await Promise.all([
-    getUsageEvents({ limit: 50 }),
+  const [stats, filterOptions] = await Promise.all([
+    getDashboardStats(INITIAL_DAYS),
     getFilterOptions(),
   ]);
 
-  const usingSeedData = eventsResult.usingSeedData;
+  const usingSeedData = stats.usingSeedData;
+
+  const initialBuckets = stats.dailyTotals.map((d) => ({
+    label: d.date,
+    tokens: Number(d.tokens) || 0,
+    cost: Number(d.cost ?? 0) || 0,
+  }));
 
   return (
     <div className="p-6 space-y-6">
@@ -31,16 +41,17 @@ export default async function UsagePage() {
           </p>
         </div>
         <Badge variant={usingSeedData ? "secondary" : "outline"} className="text-xs">
-          {usingSeedData ? "Seed data" : `${eventsResult.total.toLocaleString()} events`}
+          {usingSeedData ? "Seed data" : `${stats.totalEvents.toLocaleString()} events`}
         </Badge>
       </div>
 
       <UsageClient
-        initialEvents={eventsResult.events}
-        totalCount={eventsResult.total}
+        initialDays={stats.periodDays ?? INITIAL_DAYS}
+        initialBuckets={initialBuckets}
         models={filterOptions.models}
         userIds={filterOptions.userIds}
         userNames={Object.fromEntries(filterOptions.userNames)}
+        projectNames={Object.fromEntries(filterOptions.projectNames)}
         usingSeedData={usingSeedData}
       />
     </div>

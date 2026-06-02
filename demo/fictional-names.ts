@@ -50,6 +50,15 @@ export function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
+// Fictional teammates for the demo workspace. First two are humans, last two
+// are service accounts (matches the pattern in the real workspace).
+export const DEMO_USERS = [
+  { id: "demo-user-rivera", display_name: "Maya Rivera", kind: "human" as const },
+  { id: "demo-user-osei",   display_name: "Kwame Osei",  kind: "human" as const },
+  { id: "demo-user-svc-ci", display_name: "ci-runner",   kind: "service" as const },
+  { id: "demo-user-svc-bot",display_name: "intake-bot",  kind: "service" as const },
+];
+
 export const MODELS = [
   { id: "claude-opus-4-7", provider: "anthropic", input_per_m: 5, output_per_m: 25, cache_read_per_m: 0.5 },
   { id: "claude-sonnet-4-6", provider: "anthropic", input_per_m: 1, output_per_m: 5, cache_read_per_m: 0.1 },

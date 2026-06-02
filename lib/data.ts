@@ -314,6 +314,12 @@ export async function getUsageEvents(opts: {
 }): Promise<UsageEventsResult> {
   const { limit = 50, offset = 0, userId, model } = opts;
 
+  if (isDemoMode()) {
+    const { demoUsageEvents } = await import("../demo/demo-mode-flag");
+    const r = demoUsageEvents({ limit, offset, userId, model });
+    return { events: r.events as unknown as UsageEvent[], total: r.total, usingSeedData: true };
+  }
+
   if (!isServiceRoleConfigured()) {
     let events = [...SEED_USAGE_EVENTS].sort(
       (a, b) => new Date(b.captured_at).getTime() - new Date(a.captured_at).getTime()
@@ -370,6 +376,10 @@ export interface ProjectDetailResult {
 }
 
 export async function getProjectDetail(slug: string): Promise<ProjectDetailResult> {
+  if (isDemoMode()) {
+    const { demoProjectDetail } = await import("../demo/demo-mode-flag");
+    return demoProjectDetail(slug) as ProjectDetailResult;
+  }
   if (!isServiceRoleConfigured()) {
     const project = SEED_PROJECTS.find((p) => p.slug === slug) ?? null;
     if (!project) return emptyProjectDetail();
@@ -478,6 +488,10 @@ export interface FilterOptions {
 }
 
 export async function getFilterOptions(): Promise<FilterOptions> {
+  if (isDemoMode()) {
+    const { demoFilterOptions } = await import("../demo/demo-mode-flag");
+    return demoFilterOptions();
+  }
   if (!isServiceRoleConfigured()) {
     const models = [...new Set(SEED_USAGE_EVENTS.map((e) => e.model))].sort();
     const userIds = SEED_USERS.map((u) => u.id);
@@ -759,7 +773,10 @@ export async function getQuotaWindowDetails(): Promise<{
   windows: QuotaWindowDetail[];
   usingSeedData: boolean;
 }> {
-  if (isDemoMode()) return { windows: [], usingSeedData: true };
+  if (isDemoMode()) {
+    const { demoQuotaWindowDetails } = await import("../demo/demo-mode-flag");
+    return { windows: demoQuotaWindowDetails() as QuotaWindowDetail[], usingSeedData: true };
+  }
   if (!isServiceRoleConfigured()) {
     return { windows: [], usingSeedData: false };
   }
@@ -864,7 +881,10 @@ export async function getQuotaWindowDetails(): Promise<{
 // ---------------------------------------------------------------------------
 
 export async function getModelBreakdown(days?: number): Promise<ModelBreakdownRow[]> {
-  if (isDemoMode()) return [];
+  if (isDemoMode()) {
+    const { demoModelBreakdown } = await import("../demo/demo-mode-flag");
+    return demoModelBreakdown(days) as ModelBreakdownRow[];
+  }
   if (!isServiceRoleConfigured()) {
     const byModel = new Map<string, ModelBreakdownRow>();
     const cutoff = days
@@ -955,7 +975,10 @@ const WRAP_CUTOFF = `${WRAP_YEAR}-01-01`;
 const WRAP_MONTH_LABELS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
 export async function getWrapStats(): Promise<WrapStats | null> {
-  if (isDemoMode()) return null;
+  if (isDemoMode()) {
+    const { demoWrapStats } = await import("../demo/demo-mode-flag");
+    return demoWrapStats() as unknown as WrapStats | null;
+  }
   if (!isServiceRoleConfigured()) return null;
 
   try {
@@ -1082,6 +1105,10 @@ export async function getWrapStats(): Promise<WrapStats | null> {
 // ---------------------------------------------------------------------------
 
 export async function getUnattributedGroups(): Promise<UnattributedGroup[]> {
+  if (isDemoMode()) {
+    const { demoUnattributedGroups } = await import("../demo/demo-mode-flag");
+    return demoUnattributedGroups() as UnattributedGroup[];
+  }
   if (!isServiceRoleConfigured()) return [];
 
   try {
@@ -1138,7 +1165,10 @@ export async function getUsersSummary(days = 30): Promise<{
   totalTokens: number;
   usingSeedData: boolean;
 }> {
-  if (isDemoMode()) return { users: [], totalHuman: 0, totalService: 0, totalTokens: 0, usingSeedData: true };
+  if (isDemoMode()) {
+    const { demoUsersSummary } = await import("../demo/demo-mode-flag");
+    return demoUsersSummary(days) as { users: UserSummaryRow[]; totalHuman: number; totalService: number; totalTokens: number; usingSeedData: boolean };
+  }
   if (!isServiceRoleConfigured()) {
     // Seed fallback — derive from SEED_USERS + SEED_USAGE_EVENTS
     const byUser = new Map<string, { tokens: number; cost: number | null }>();
@@ -1229,6 +1259,10 @@ export async function getUsersSummary(days = 30): Promise<{
 }
 
 export async function getProjectsForSelect(): Promise<ProjectTotals[]> {
+  if (isDemoMode()) {
+    const { demoProjectsForSelect } = await import("../demo/demo-mode-flag");
+    return demoProjectsForSelect() as ProjectTotals[];
+  }
   if (!isServiceRoleConfigured()) return [];
 
   try {

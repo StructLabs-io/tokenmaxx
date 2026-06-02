@@ -29,10 +29,22 @@ const PALETTE = [
 ];
 
 export function UsageStackedBarChart({ buckets, series, height = 220 }: Props) {
+  // Sort series by total tokens descending so the legend (and stacking order)
+  // surfaces the largest contributor on top.
+  const sortedSeries = (() => {
+    const totals = new Map<string, number>();
+    for (const s of series) {
+      let sum = 0;
+      for (const b of buckets) sum += Number(b.series?.[s]?.tokens) || 0;
+      totals.set(s, sum);
+    }
+    return [...series].sort((a, b) => (totals.get(b) ?? 0) - (totals.get(a) ?? 0));
+  })();
+
   // Flatten data so each row = bucket + one numeric per series.
   const data = buckets.map((b) => {
     const row: any = { label: b.label };
-    for (const s of series) {
+    for (const s of sortedSeries) {
       row[s] = Number(b.series?.[s]?.tokens) || 0;
     }
     return row;
@@ -61,7 +73,7 @@ export function UsageStackedBarChart({ buckets, series, height = 220 }: Props) {
           cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }}
         />
         <Legend wrapperStyle={{ fontSize: 11 }} />
-        {series.map((s, i) => (
+        {sortedSeries.map((s, i) => (
           <Bar
             key={s}
             dataKey={s}
@@ -69,7 +81,7 @@ export function UsageStackedBarChart({ buckets, series, height = 220 }: Props) {
             fill={PALETTE[i % PALETTE.length]}
             isAnimationActive={false}
             minPointSize={1}
-            radius={i === series.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0]}
+            radius={i === sortedSeries.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0]}
           />
         ))}
       </BarChart>

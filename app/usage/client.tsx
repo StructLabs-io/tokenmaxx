@@ -1,17 +1,18 @@
 "use client";
 
 /**
- * UsageClient -- client-side filter UI for /usage
+ * UsageClient -- /usage page client logic.
  *
- * Receives pre-fetched events from the server component.
- * Filters are applied client-side on the initial page of data.
- * For large datasets, users can navigate to /raw for paginated server-side filtering.
+ * The chart is rendered by the shared TokenTrendChartCard (same component the
+ * dashboard uses). This page also shows the paginated events table for the
+ * active timeframe + filters; the table re-fetches whenever the chart card
+ * emits an onTimeframeChange.
  */
 
-import { useState, useMemo } from "react";
-import { formatTokens, formatCost } from "@/lib/utils";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -20,52 +21,103 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { UsageLineChart } from "@/components/charts/usage-line";
-import type { UsageEvent } from "@/lib/supabase/types";
+import { formatCost } from "@/lib/utils";
+import {
+  TokenTrendChartCard,
+  type Bucket,
+  type TimeframeParams,
+} from "@/components/charts/token-trend-chart-card";
+import type { UsageEventRow, EventsPage } from "@/lib/supabase/types";
+
+const PAGE_SIZE = 50;
+
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+function daysAgoIso(n: number) {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
+function rangeToDateBounds(tf: TimeframeParams, initialDays: number): { from: string; to: string } {
+  if (tf.range === "custom") {
+    return { from: tf.from ?? daysAgoIso(initialDays - 1), to: tf.to ?? todayIso() };
+  }
+  const days = tf.days ?? initialDays;
+  return { from: daysAgoIso(days - 1), to: todayIso() };
+}
 
 interface Props {
-  initialEvents: UsageEvent[];
-  totalCount: number;
+  initialDays: number;
+  initialBuckets: Bucket[];
   models: string[];
   userIds: string[];
   userNames: Record<string, string>;
+  projectNames: Record<string, string>;
   usingSeedData: boolean;
 }
 
 export function UsageClient({
-  initialEvents,
-  totalCount,
+  initialDays,
+  initialBuckets,
   models,
   userIds,
   userNames,
+  projectNames,
   usingSeedData,
 }: Props) {
   const [filterUser, setFilterUser] = useState<string>("all");
   const [filterModel, setFilterModel] = useState<string>("all");
+  const [timeframe, setTimeframe] = useState<TimeframeParams>({
+    range: `${initialDays}D` as TimeframeParams["range"],
+    days: initialDays,
+    granularity: "day",
+    dimension: "none",
+  });
 
-  const filtered = useMemo(() => {
-    return initialEvents.filter((e) => {
-      if (filterUser !== "all" && e.user_id !== filterUser) return false;
-      if (filterModel !== "all" && e.model !== filterModel) return false;
-      return true;
-    });
-  }, [initialEvents, filterUser, filterModel]);
+  const [events, setEvents] = useState<UsageEventRow[]>([]);
+  const [totalEvents, setTotalEvents] = useState<number>(0);
+  const [page, setPage] = useState(0);
+  const [tableLoading, setTableLoading] = useState(false);
 
-  // Daily totals for the sparkline
-  const dailyTotals = useMemo(() => {
-    const byDate = new Map<string, { tokens: number; cost: number | null }>();
-    for (const e of filtered) {
-      const date = e.date_utc;
-      const existing = byDate.get(date) ?? { tokens: 0, cost: null };
-      byDate.set(date, {
-        tokens: existing.tokens + e.total_tokens,
-        cost: e.cost_usd != null ? (existing.cost ?? 0) + e.cost_usd : existing.cost,
-      });
+  const extraQuery = useMemo(() => {
+    const q: Record<string, string> = {};
+    if (filterUser !== "all") q.user_id = filterUser;
+    if (filterModel !== "all") q.model = filterModel;
+    return q;
+  }, [filterUser, filterModel]);
+
+  async function loadTable(targetPage: number) {
+    setTableLoading(true);
+    try {
+      const { from, to } = rangeToDateBounds(timeframe, initialDays);
+      const parts: string[] = [`page=${targetPage}`, `pageSize=${PAGE_SIZE}`, `from=${from}`, `to=${to}`];
+      if (filterUser !== "all") parts.push(`user=${encodeURIComponent(filterUser)}`);
+      if (filterModel !== "all") parts.push(`model=${encodeURIComponent(filterModel)}`);
+      const r = await fetch(`/api/events?${parts.join("&")}`, { cache: "no-store" });
+      if (!r.ok) {
+        setEvents([]);
+        setTotalEvents(0);
+        return;
+      }
+      const j = (await r.json()) as EventsPage;
+      setEvents(j.events ?? []);
+      setTotalEvents(j.total ?? 0);
+      setPage(j.page ?? targetPage);
+    } finally {
+      setTableLoading(false);
     }
-    return Array.from(byDate.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, { tokens, cost }]) => ({ date, tokens, cost: cost ?? 0 }));
-  }, [filtered]);
+  }
+
+  // Refetch the events table when the timeframe or filters change.
+  useEffect(() => {
+    setPage(0);
+    loadTable(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeframe.range, timeframe.days, timeframe.from, timeframe.to, filterUser, filterModel]);
+
+  const pageCount = Math.max(1, Math.ceil(totalEvents / PAGE_SIZE));
 
   function displayUser(userId: string): string {
     return userNames[userId] ?? userId;
@@ -74,7 +126,7 @@ export function UsageClient({
   return (
     <>
       {/* Filters */}
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap gap-3 items-center">
         <div className="flex items-center gap-2">
           <label className="text-sm text-muted-foreground" htmlFor="filter-user">
             User
@@ -113,26 +165,33 @@ export function UsageClient({
           </select>
         </div>
 
-        <span className="text-sm text-muted-foreground self-center ml-auto">
-          {filtered.length} of {totalCount} events
+        <span className="text-sm text-muted-foreground self-center ml-auto tabular-nums">
+          {totalEvents.toLocaleString()} events in window
           {usingSeedData && " (seed)"}
         </span>
       </div>
 
-      {/* Chart */}
-      <Card>
-        <CardHeader className="px-6">
-          <CardTitle className="text-sm font-medium">Daily tokens</CardTitle>
-        </CardHeader>
-        <CardContent className="px-6 pb-2">
-          <UsageLineChart data={dailyTotals} metric="tokens" height={200} />
-        </CardContent>
-      </Card>
+      <TokenTrendChartCard
+        initialBuckets={initialBuckets}
+        initialDays={initialDays}
+        extraQuery={extraQuery}
+        height={220}
+        onTimeframeChange={(tf) => setTimeframe(tf)}
+      />
 
-      {/* Event table */}
+      {/* Event table — server-paginated, matches the chart's timeframe + filters */}
       <Card>
         <CardHeader className="px-6">
-          <CardTitle className="text-sm font-medium">Events</CardTitle>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="text-sm font-medium">Events</CardTitle>
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {tableLoading
+                ? "Loading…"
+                : totalEvents === 0
+                  ? "No events"
+                  : `Page ${page + 1} of ${pageCount} · ${totalEvents.toLocaleString()} total`}
+            </span>
+          </div>
         </CardHeader>
         <CardContent className="px-0">
           <Table>
@@ -140,6 +199,7 @@ export function UsageClient({
               <TableRow>
                 <TableHead className="pl-6">Time</TableHead>
                 <TableHead>User</TableHead>
+                <TableHead>Project</TableHead>
                 <TableHead>Model</TableHead>
                 <TableHead>Capture method</TableHead>
                 <TableHead className="text-right">Input</TableHead>
@@ -148,9 +208,9 @@ export function UsageClient({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.slice(0, 50).map((e: UsageEvent) => (
+              {events.map((e) => (
                 <TableRow key={e.id}>
-                  <TableCell className="pl-6 text-muted-foreground">
+                  <TableCell className="pl-6 text-muted-foreground text-xs whitespace-nowrap">
                     {new Date(e.captured_at).toLocaleDateString("en-US", {
                       month: "short",
                       day: "numeric",
@@ -158,7 +218,14 @@ export function UsageClient({
                       minute: "2-digit",
                     })}
                   </TableCell>
-                  <TableCell>{displayUser(e.user_id)}</TableCell>
+                  <TableCell className="text-sm">
+                    {e.user_display_name ?? displayUser(e.user_id)}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground max-w-[180px] truncate">
+                    {e.project_id
+                      ? (e.project_display_name ?? projectNames[e.project_id] ?? e.project_id)
+                      : <span className="italic">unattributed</span>}
+                  </TableCell>
                   <TableCell>
                     <Badge variant="outline" className="text-xs font-mono">
                       {e.model}
@@ -178,16 +245,36 @@ export function UsageClient({
                   </TableCell>
                 </TableRow>
               ))}
+              {!tableLoading && events.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center text-xs text-muted-foreground py-6">
+                    No events for the selected timeframe and filters.
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
-          {filtered.length > 50 && (
-            <p className="text-xs text-muted-foreground px-6 py-3">
-              Showing 50 of {filtered.length} — use{" "}
-              <a href="/raw" className="text-primary hover:underline">
-                /raw
-              </a>{" "}
-              for full paginated view
-            </p>
+          {totalEvents > PAGE_SIZE && (
+            <div className="flex items-center justify-end gap-2 px-6 py-3">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-3 text-xs"
+                disabled={tableLoading || page === 0}
+                onClick={() => loadTable(page - 1)}
+              >
+                Prev
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-3 text-xs"
+                disabled={tableLoading || page + 1 >= pageCount}
+                onClick={() => loadTable(page + 1)}
+              >
+                Next
+              </Button>
+            </div>
           )}
         </CardContent>
       </Card>

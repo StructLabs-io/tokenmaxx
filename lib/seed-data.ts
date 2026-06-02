@@ -145,14 +145,25 @@ const USER_IDS = SEED_USERS.map((u) => u.id);
 
 let _seedIdCounter = 1;
 
+// Seed window spans the last 30 days ending today, so date filters and the
+// /api/usage-trend "last N days" path return non-empty data in seed mode.
+const SEED_DAYS = 30;
+const SEED_EVENTS_PER_DAY = 10;
+const SEED_END = (() => {
+  const d = new Date();
+  d.setUTCHours(0, 0, 0, 0);
+  return d;
+})();
+
 function makeEvent(
   dayOffset: number,
   seq: number,
   overrides: Partial<UsageEvent> = {}
 ): UsageEvent {
-  const date = new Date("2025-05-15T00:00:00Z");
-  date.setDate(date.getDate() + dayOffset);
-  date.setHours(8 + (seq % 10));
+  // dayOffset 0 = oldest, dayOffset (SEED_DAYS - 1) = today
+  const date = new Date(SEED_END);
+  date.setUTCDate(date.getUTCDate() - (SEED_DAYS - 1) + dayOffset);
+  date.setUTCHours(8 + (seq % 10));
 
   const model = MODELS[seq % MODELS.length];
   const captureMethod = CAPTURE_METHODS[seq % CAPTURE_METHODS.length];
@@ -194,11 +205,13 @@ function makeEvent(
   };
 }
 
-// Generate 14 days × 10 events per day = 140 events
+// 30 days × 10 events per day = 300 events, ending today
 export const SEED_USAGE_EVENTS: UsageEvent[] = Array.from(
-  { length: 14 },
+  { length: SEED_DAYS },
   (_, day) =>
-    Array.from({ length: 10 }, (_, seq) => makeEvent(day, seq + day * 10))
+    Array.from({ length: SEED_EVENTS_PER_DAY }, (_, seq) =>
+      makeEvent(day, seq + day * SEED_EVENTS_PER_DAY),
+    ),
 ).flat();
 
 // ---------------------------------------------------------------------------

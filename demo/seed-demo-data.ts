@@ -10,12 +10,13 @@
  * Used by demo-mode-flag.ts when NEXT_PUBLIC_TOKENMAXX_DEMO=1.
  */
 
-import { ALL_PROJECTS, MODELS, slugify } from "./fictional-names";
+import { ALL_PROJECTS, DEMO_USERS, MODELS, slugify } from "./fictional-names";
 
 export interface DemoEvent {
   id: number;
   captured_at: string;
   date_utc: string;
+  user_id: string;
   provider: string;
   model: string;
   project_id: string;
@@ -98,6 +99,12 @@ export function generateDemoEvents(daysBack = 365, today = new Date()): DemoEven
 
       const project = pick(rand, projectWeights);
       const model = pick(rand, MODELS.map((m) => ({ value: m, weight: m.provider === "anthropic" ? 3 : 2 })));
+      // Humans dominate; service accounts emit short, bursty traffic.
+      const userWeights = DEMO_USERS.map((u) => ({
+        value: u,
+        weight: u.kind === "human" ? 5 : 1,
+      }));
+      const user = pick(rand, userWeights);
       const inputT = Math.floor(800 + rand() * 18000);
       const outputT = Math.floor(400 + rand() * 9000);
       const cacheCreate = Math.floor(rand() * 4000);
@@ -111,6 +118,7 @@ export function generateDemoEvents(daysBack = 365, today = new Date()): DemoEven
         id: id++,
         captured_at: captured.toISOString(),
         date_utc: captured.toISOString().slice(0, 10),
+        user_id: user.id,
         provider: model.provider,
         model: model.id,
         project_id: project.slug,
@@ -146,6 +154,80 @@ export function generateDemoProjects() {
     deleted_at: null,
     created_at: new Date(Date.now() - 365 * 86400 * 1000).toISOString(),
   }));
+}
+
+export function generateDemoUsers() {
+  return DEMO_USERS.map((u) => ({
+    id: u.id,
+    workspace_id: WORKSPACE,
+    display_name: u.display_name,
+    kind: u.kind, // "human" | "service"
+    deleted_at: null,
+    created_at: new Date(Date.now() - 365 * 86400 * 1000).toISOString(),
+  }));
+}
+
+/**
+ * Plausible quota windows for the two demo subscriptions. Shape matches the
+ * QuotaWindowDetail interface in lib/data.ts so /quota renders end-to-end.
+ */
+export function generateDemoQuotaWindows() {
+  const now = new Date().toISOString();
+  const hours = (h: number) => h * 60 * 60 * 1000;
+  return [
+    {
+      id: 1,
+      subscription_id: "demo-sub-anthropic",
+      window_label: "Claude Max — 5h rolling",
+      window_type: "rolling_hours" as const,
+      window_hours: 5,
+      notes: "Resets every 5 hours",
+      provider: "anthropic",
+      tokens_in_window: 1_200_000,
+      fillPct: 0.42,
+      ms_until_reset: hours(2.5),
+      latest_observed_at: now,
+    },
+    {
+      id: 2,
+      subscription_id: "demo-sub-anthropic",
+      window_label: "Claude Max — weekly",
+      window_type: "calendar_week" as const,
+      window_hours: 168,
+      notes: "Resets every Monday 00:00 local",
+      provider: "anthropic",
+      tokens_in_window: 18_400_000,
+      fillPct: 0.67,
+      ms_until_reset: hours(48),
+      latest_observed_at: now,
+    },
+    {
+      id: 3,
+      subscription_id: "demo-sub-openai",
+      window_label: "Codex Pro — 5h rolling",
+      window_type: "rolling_hours" as const,
+      window_hours: 5,
+      notes: "Resets every 5 hours",
+      provider: "openai-codex",
+      tokens_in_window: 720_000,
+      fillPct: 0.31,
+      ms_until_reset: hours(1.7),
+      latest_observed_at: now,
+    },
+    {
+      id: 4,
+      subscription_id: "demo-sub-openai",
+      window_label: "Codex Pro — weekly",
+      window_type: "calendar_week" as const,
+      window_hours: 168,
+      notes: "Resets weekly",
+      provider: "openai-codex",
+      tokens_in_window: 8_900_000,
+      fillPct: 0.54,
+      ms_until_reset: hours(72),
+      latest_observed_at: now,
+    },
+  ];
 }
 
 export function generateDemoSubscriptions() {
