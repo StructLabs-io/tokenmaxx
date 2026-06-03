@@ -97,18 +97,47 @@ async function getWorkspaceId(idOrSlug) {
   return rows[0].id;
 }
 
+/**
+ * Deduplicate rows on the unique constraint key before batching.
+ * Postgres raises "ON CONFLICT DO UPDATE command cannot affect row a second
+ * time" when two rows in the same INSERT share the same constrained values.
+ * Last-write-wins: later rows in the input array overwrite earlier ones.
+ */
+function deduplicateRows(rows) {
+  const seen = new Map();
+  for (const row of rows) {
+    const key = [
+      row.user_id,
+      row.capture_method,
+      row.session_id,
+      row.model,
+      row.date_utc,
+    ].join('\x00');
+    seen.set(key, row); // last occurrence wins
+  }
+  return [...seen.values()];
+}
+
 async function batchInsertEvents(rows, dryRun) {
   if (rows.length === 0) return { inserted: 0, failed: 0 };
+
+  // Dedup before any batch split — prevents the Postgres "cannot affect row
+  // a second time" error when the same session appears in multiple scan passes.
+  const deduped = deduplicateRows(rows);
+  if (deduped.length < rows.length) {
+    console.log(`    Deduped ${rows.length - deduped.length} duplicate rows before upsert`);
+  }
+
   if (dryRun) {
-    for (const row of rows) {
+    for (const row of deduped) {
       console.log(`    [dry-run] ${row.provider}/${row.model} ${row.date_utc} in:${row.input_tokens} out:${row.output_tokens}`);
     }
-    return { inserted: rows.length, failed: 0 };
+    return { inserted: deduped.length, failed: 0 };
   }
   const BATCH = 100;
   let inserted = 0, failed = 0;
-  for (let i = 0; i < rows.length; i += BATCH) {
-    const chunk = rows.slice(i, i + BATCH);
+  for (let i = 0; i < deduped.length; i += BATCH) {
+    const chunk = deduped.slice(i, i + BATCH);
     try {
       await supabaseRequest(
         // on_conflict targets the unique constraint columns directly so
@@ -440,20 +469,44 @@ Environment:
  * `daily-<date>-<model>` keeps the unique constraint happy and makes upserts
  * deterministic across runs.
  */
+/**
+ * Resolve the ccusage binary path. Cron environments strip PATH, so 'npx'
+ * and shell shims (nvm) are unavailable. We probe in order:
+ *   1. CCUSAGE_BIN env var (explicit override)
+ *   2. /opt/homebrew/bin/ccusage (Homebrew install — Ben's Mac default)
+ *   3. Same directory as the node binary that launched this process
+ *   4. Fall back to bare 'ccusage' and let execFileSync throw a useful error
+ */
+function resolveCcusageBin() {
+  const envBin = process.env.CCUSAGE_BIN;
+  if (envBin && fs.existsSync(envBin)) return envBin;
+
+  const homebrewBin = '/opt/homebrew/bin/ccusage';
+  if (fs.existsSync(homebrewBin)) return homebrewBin;
+
+  // Same dir as node (e.g. nvm node dir also contains ccusage)
+  const nodeDir = path.dirname(process.execPath);
+  const nodeLocalBin = path.join(nodeDir, 'ccusage');
+  if (fs.existsSync(nodeLocalBin)) return nodeLocalBin;
+
+  return 'ccusage'; // last-resort bare name
+}
+
 function collectClaudeViaCcusage(workspaceId, userId, lookbackDays) {
   const since = new Date();
   since.setUTCDate(since.getUTCDate() - lookbackDays);
   const sinceArg = since.toISOString().slice(0, 10).replace(/-/g, '');
 
+  const ccusageBin = resolveCcusageBin();
   let raw;
   try {
-    raw = execFileSync('npx', ['ccusage@latest', 'daily', '--json', '--since', sinceArg], {
+    raw = execFileSync(ccusageBin, ['daily', '--json', '--since', sinceArg], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
       maxBuffer: 32 * 1024 * 1024,
     });
   } catch (err) {
-    console.error(`  ccusage CLI failed: ${err.message}`);
+    console.error(`  ccusage CLI failed (bin: ${ccusageBin}): ${err.message}`);
     return [];
   }
 
@@ -467,7 +520,8 @@ function collectClaudeViaCcusage(workspaceId, userId, lookbackDays) {
   const out = [];
   for (const day of data.daily ?? []) {
     if (day.agent && day.agent !== 'all' && day.agent !== 'claude') continue;
-    const date = day.period;
+    // ccusage >=11 uses "date"; earlier builds used "period". Accept both.
+    const date = day.date ?? day.period;
     if (!date) continue;
     for (const m of day.modelBreakdowns ?? []) {
       const modelName = m.modelName;

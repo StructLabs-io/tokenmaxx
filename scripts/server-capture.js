@@ -431,7 +431,8 @@ function collectClaudeViaCcusage(workspaceId, userId, lookbackDays) {
   const out = [];
   for (const day of data.daily ?? []) {
     if (day.agent && day.agent !== 'all' && day.agent !== 'claude') continue;
-    const date = day.period;
+    // ccusage >=11 uses "date"; earlier builds used "period". Accept both.
+    const date = day.date ?? day.period;
     if (!date) continue;
     for (const m of day.modelBreakdowns ?? []) {
       const modelName = m.modelName;
