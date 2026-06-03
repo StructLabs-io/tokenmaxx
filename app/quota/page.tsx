@@ -7,7 +7,7 @@
  */
 
 import { getQuotaWindowDetails } from "@/lib/data";
-import { formatTokens } from "@/lib/utils";
+import { formatTokens, formatTokensExact } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { WindowCard } from "@/components/quota/window-card";
@@ -173,6 +173,11 @@ export default async function QuotaPage() {
                     <WindowCard
                       window={toWindowCardProp(detail)}
                       fillPct={detail.fillPct ?? null}
+                      estimatedCap={
+                        detail.fillPct != null && detail.fillPct > 0 && detail.tokens_in_window > 0
+                          ? Math.round(detail.tokens_in_window / detail.fillPct)
+                          : null
+                      }
                     />
 
                     {/* Inferred cap row */}
@@ -195,9 +200,9 @@ export default async function QuotaPage() {
                             </span>
                           </span>
                           <span className="tabular-nums text-foreground">
-                            ~{formatTokens(caps.get(detail.id)!.p50)}{" "}
+                            ~<span title={formatTokensExact(caps.get(detail.id)!.p50)}>{formatTokens(caps.get(detail.id)!.p50)}</span>{" "}
                             <span className="text-muted-foreground">
-                              ({formatTokens(caps.get(detail.id)!.p25)}–{formatTokens(caps.get(detail.id)!.p75)})
+                              (<span title={formatTokensExact(caps.get(detail.id)!.p25)}>{formatTokens(caps.get(detail.id)!.p25)}</span>–<span title={formatTokensExact(caps.get(detail.id)!.p75)}>{formatTokens(caps.get(detail.id)!.p75)}</span>)
                             </span>
                           </span>
                         </div>
@@ -207,7 +212,7 @@ export default async function QuotaPage() {
                     <div className="flex items-center justify-between px-1 text-xs text-muted-foreground">
                       <span>
                         Tokens used:{" "}
-                        <span className="font-medium text-foreground tabular-nums">
+                        <span className="font-medium text-foreground tabular-nums" title={formatTokensExact(detail.tokens_in_window)}>
                           {formatTokens(detail.tokens_in_window)}
                         </span>
                       </span>
@@ -253,12 +258,21 @@ export default async function QuotaPage() {
                     </span>
                   </div>
                   <div className="text-right">
-                    <span className="tabular-nums font-medium">
+                    <span className="tabular-nums font-medium" title={formatTokensExact(w.tokens_in_window)}>
                       {formatTokens(w.tokens_in_window)}
                     </span>
-                    <span className="ml-2 text-xs text-amber-500 dark:text-amber-400">
-                      / cap unknown
-                    </span>
+                    {w.fillPct != null && w.fillPct > 0 && w.tokens_in_window > 0 ? (
+                      <span
+                        className="ml-2 text-xs text-muted-foreground"
+                        title={`Estimated cap: ${formatTokensExact(Math.round(w.tokens_in_window / w.fillPct))}`}
+                      >
+                        / ~{formatTokens(Math.round(w.tokens_in_window / w.fillPct))}
+                      </span>
+                    ) : (
+                      <span className="ml-2 text-xs text-amber-500 dark:text-amber-400">
+                        / cap unknown
+                      </span>
+                    )}
                   </div>
                 </div>
               ))}

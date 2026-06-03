@@ -7,7 +7,7 @@
 
 import { getUsersSummary } from "@/lib/data";
 import { UsersClient } from "./client";
-import { formatTokens, formatCost } from "@/lib/utils";
+import { formatTokens, formatTokensExact, formatCost } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -66,7 +66,7 @@ export default async function UsersPage() {
         <Card className="gap-2 py-4">
           <CardHeader className="px-4">
             <p className="text-xs text-muted-foreground">Total tokens (30d)</p>
-            <p className="text-2xl font-bold tabular-nums">{formatTokens(totalTokens)}</p>
+            <p className="text-2xl font-bold tabular-nums" title={totalTokens >= 1_000_000_000 ? formatTokensExact(totalTokens) : undefined}>{formatTokens(totalTokens)}</p>
           </CardHeader>
         </Card>
       </div>

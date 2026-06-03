@@ -6,7 +6,7 @@
  */
 
 import { getSubscriptionsSummary } from "@/lib/data";
-import { formatTokens, formatCost } from "@/lib/utils";
+import { formatTokens, formatTokensExact, formatCost } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { SubscriptionSummary } from "@/lib/supabase/types";
@@ -83,7 +83,7 @@ function SubscriptionCard({ sub }: { sub: SubscriptionSummary }) {
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-lg bg-muted/50 px-3 py-2.5">
             <p className="text-xs text-muted-foreground">Tokens (30d)</p>
-            <p className="text-lg font-semibold tabular-nums mt-0.5">
+            <p className="text-lg font-semibold tabular-nums mt-0.5" title={formatTokensExact(sub.tokens_30d)}>
               {formatTokens(sub.tokens_30d)}
             </p>
           </div>
@@ -117,7 +117,7 @@ function SubscriptionCard({ sub }: { sub: SubscriptionSummary }) {
                   </p>
                 </div>
                 <div className="text-right space-y-0.5">
-                  <p className="font-medium tabular-nums">{formatTokens(w.tokens_in_window)}</p>
+                  <p className="font-medium tabular-nums" title={formatTokensExact(w.tokens_in_window)}>{formatTokens(w.tokens_in_window)}</p>
                   <p className="text-xs text-muted-foreground">
                     Cap:{" "}
                     <span className="text-amber-500 dark:text-amber-400">unknown</span>

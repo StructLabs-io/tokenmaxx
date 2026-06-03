@@ -2,7 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { DataTable } from "@/components/ui/data-table";
-import { formatCost, formatTokens } from "@/lib/utils";
+import { formatCost, formatTokens, formatTokensExact } from "@/lib/utils";
 
 const columns: any[] = [
   {
@@ -41,9 +41,14 @@ const columns: any[] = [
   {
     accessorKey: "total_tokens",
     header: "Tokens (30d)",
-    cell: (info: any) => (
-      <span className="text-right tabular-nums text-xs">{formatTokens(info.getValue() as number)}</span>
-    ),
+    cell: (info: any) => {
+      const n = info.getValue() as number;
+      return (
+        <span className="text-right tabular-nums text-xs" title={n >= 1_000_000_000 ? formatTokensExact(n) : undefined}>
+          {formatTokens(n)}
+        </span>
+      );
+    },
   },
   {
     accessorKey: "cost_usd",

@@ -6,7 +6,7 @@
  */
 
 import { getDashboardStats, getQuotaWindowDetails } from "@/lib/data";
-import { formatTokens, formatCost } from "@/lib/utils";
+import { formatTokens, formatTokensExact, formatCost } from "@/lib/utils";
 import {
   Card,
   CardContent,
@@ -107,7 +107,7 @@ export default async function DashboardPage() {
                     <p className="text-sm font-medium tabular-nums">
                       {p.totalCost != null ? formatCost(p.totalCost) : "—"}
                     </p>
-                    <p className="text-xs text-muted-foreground tabular-nums">
+                    <p className="text-xs text-muted-foreground tabular-nums" title={p.totalTokens >= 1_000_000_000 ? formatTokensExact(p.totalTokens) : undefined}>
                       {formatTokens(p.totalTokens)}
                     </p>
                   </div>

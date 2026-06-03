@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatCost, formatTokens } from "@/lib/utils";
+import { formatCost, formatTokens, formatTokensExact } from "@/lib/utils";
 import { TokenTrendChartCard, type Bucket, type Granularity } from "@/components/charts/token-trend-chart-card";
 
 interface Props {
@@ -43,7 +43,7 @@ export function DashboardTop({ initialBuckets, initialDays }: Props) {
         <Card className="gap-2 py-4">
           <CardHeader className="px-4">
             <CardDescription>Latest period token</CardDescription>
-            <CardTitle className="text-2xl font-bold tabular-nums">{formatTokens(totals.todayTokens)}</CardTitle>
+            <CardTitle className="text-2xl font-bold tabular-nums" title={totals.todayTokens >= 1_000_000_000 ? formatTokensExact(totals.todayTokens) : undefined}>{formatTokens(totals.todayTokens)}</CardTitle>
           </CardHeader>
           <CardContent className="px-4">
             <p className="text-xs text-muted-foreground">
@@ -54,7 +54,7 @@ export function DashboardTop({ initialBuckets, initialDays }: Props) {
         <Card className="gap-2 py-4">
           <CardHeader className="px-4">
             <CardDescription>Trailing week</CardDescription>
-            <CardTitle className="text-2xl font-bold tabular-nums">{formatTokens(totals.weekTokens)}</CardTitle>
+            <CardTitle className="text-2xl font-bold tabular-nums" title={totals.weekTokens >= 1_000_000_000 ? formatTokensExact(totals.weekTokens) : undefined}>{formatTokens(totals.weekTokens)}</CardTitle>
           </CardHeader>
           <CardContent className="px-4">
             <p className="text-xs text-muted-foreground">{formatCost(totals.weekCost)} cost</p>
@@ -63,7 +63,7 @@ export function DashboardTop({ initialBuckets, initialDays }: Props) {
         <Card className="gap-2 py-4">
           <CardHeader className="px-4">
             <CardDescription>Total tokens ({periodLabel})</CardDescription>
-            <CardTitle className="text-2xl font-bold tabular-nums">{formatTokens(totals.tokens)}</CardTitle>
+            <CardTitle className="text-2xl font-bold tabular-nums" title={totals.tokens >= 1_000_000_000 ? formatTokensExact(totals.tokens) : undefined}>{formatTokens(totals.tokens)}</CardTitle>
           </CardHeader>
           <CardContent className="px-4">
             <p className="text-xs text-muted-foreground">{eventsCount} buckets</p>

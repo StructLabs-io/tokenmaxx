@@ -142,6 +142,51 @@ export function demoUsersSummary(days = 30) {
   };
 }
 
+/**
+ * Period-specific daily buckets for the wrap page bar chart.
+ * period="month" → daily buckets for the current calendar month.
+ * period="week"  → daily buckets for the current Mon–Sun week.
+ */
+export function demoWrapPeriodBuckets(period: "month" | "week") {
+  const events = demoEvents();
+  const now = new Date();
+
+  let fromDate: string;
+  let toDate: string;
+
+  if (period === "month") {
+    fromDate = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`;
+    toDate = now.toISOString().slice(0, 10);
+  } else {
+    // ISO week: Mon–Sun
+    const dow = now.getUTCDay();
+    const diff = dow === 0 ? 6 : dow - 1;
+    const monday = new Date(now);
+    monday.setUTCDate(now.getUTCDate() - diff);
+    fromDate = monday.toISOString().slice(0, 10);
+    toDate = now.toISOString().slice(0, 10);
+  }
+
+  const sub = events.filter((e) => e.date_utc >= fromDate && e.date_utc <= toDate);
+  const byDate = new Map<string, number>();
+  for (const e of sub) {
+    byDate.set(e.date_utc, (byDate.get(e.date_utc) ?? 0) + e.total_tokens);
+  }
+
+  // Fill every day in the range so chart has no gaps
+  const buckets: { label: string; tokens: number }[] = [];
+  const cursor = new Date(`${fromDate}T00:00:00Z`);
+  const end = new Date(`${toDate}T00:00:00Z`);
+  while (cursor <= end) {
+    const key = cursor.toISOString().slice(0, 10);
+    const shortLabel = cursor.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+    buckets.push({ label: shortLabel, tokens: byDate.get(key) ?? 0 });
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  return { buckets, fromDate, toDate };
+}
+
 export function demoWrapStats() {
   const events = demoEvents();
   const year = new Date().getUTCFullYear();

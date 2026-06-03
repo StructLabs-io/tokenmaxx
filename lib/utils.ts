@@ -5,8 +5,18 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/** Format a number of tokens with comma separators */
+/**
+ * Format a number of tokens with comma separators.
+ * For numbers >= 1,000,000,000 renders as "XX.XX bil" (2 dp).
+ * The exact full number is available via formatTokensExact() for hover tooltips.
+ */
 export function formatTokens(n: number): string {
+  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(2)} bil`;
+  return n.toLocaleString("en-US");
+}
+
+/** Full comma-separated number, always. Use as title= for hover tooltip on large numbers. */
+export function formatTokensExact(n: number): string {
   return n.toLocaleString("en-US");
 }
 

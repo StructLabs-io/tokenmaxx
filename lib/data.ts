@@ -630,20 +630,44 @@ function windowStart(windowType: string, windowHours: number | null): string {
 // remainder of the function tree short-circuit cleanly without paginating
 // against Supabase.
 async function demoSubscriptionsSummary() {
-  const { demoSubscriptions } = await import("../demo/demo-mode-flag");
+  const { demoSubscriptions, demoEvents, demoQuotaWindowDetails } = await import("../demo/demo-mode-flag");
   const subs = demoSubscriptions();
+  const windows = demoQuotaWindowDetails();
+  const events = demoEvents();
+
+  // Compute 30d token/cost totals per provider from demo events
+  const cutoff30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const by30 = new Map<string, { tokens: number; cost: number }>();
+  for (const e of events) {
+    if (e.date_utc < cutoff30) continue;
+    const ex = by30.get(e.provider) ?? { tokens: 0, cost: 0 };
+    by30.set(e.provider, { tokens: ex.tokens + e.total_tokens, cost: ex.cost + e.cost_usd });
+  }
+
   return {
-    subscriptions: subs.map((s) => ({
-      id: s.id,
-      provider: s.provider,
-      plan_name: s.plan_name,
-      monthly_cost_usd: s.monthly_cost_usd,
-      management_urls: s.management_urls,
-      started_at: s.started_at,
-      tokens_30d: 0,
-      cost_30d: null,
-      windows: [],
-    } as any)),
+    subscriptions: subs.map((s) => {
+      const usage30 = by30.get(s.provider) ?? { tokens: 0, cost: 0 };
+      const subWindows = windows.filter((w: any) => w.subscription_id === s.id);
+      return {
+        id: s.id,
+        provider: s.provider,
+        plan_name: s.plan_name,
+        monthly_cost_usd: s.monthly_cost_usd,
+        management_urls: s.management_urls,
+        started_at: s.started_at,
+        tokens_30d: usage30.tokens,
+        cost_30d: usage30.cost,
+        windows: subWindows.map((w: any) => ({
+          id: w.id,
+          subscription_id: w.subscription_id,
+          window_label: w.window_label,
+          window_type: w.window_type,
+          window_hours: w.window_hours,
+          tokens_in_window: w.tokens_in_window,
+          notes: w.notes,
+        })),
+      } as any;
+    }),
     usingSeedData: true,
   };
 }
@@ -1097,6 +1121,74 @@ export async function getWrapStats(): Promise<WrapStats | null> {
   } catch (err) {
     console.error("[data.getWrapStats] Unexpected error:", err);
     return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Wrap period buckets — daily bar data for /wrap?period=month|week
+// ---------------------------------------------------------------------------
+
+export interface WrapPeriodBuckets {
+  buckets: { label: string; tokens: number }[];
+  fromDate: string;
+  toDate: string;
+}
+
+/**
+ * Returns daily token buckets for the current calendar month or ISO week.
+ * Used to drive the bar chart on /wrap when period != "year".
+ */
+export async function getWrapPeriodBuckets(period: "month" | "week"): Promise<WrapPeriodBuckets> {
+  if (isDemoMode()) {
+    const { demoWrapPeriodBuckets } = await import("../demo/demo-mode-flag");
+    return demoWrapPeriodBuckets(period);
+  }
+  if (!isServiceRoleConfigured()) return { buckets: [], fromDate: "", toDate: "" };
+
+  try {
+    const now = new Date();
+    let fromDate: string;
+    const toDate = now.toISOString().slice(0, 10);
+
+    if (period === "month") {
+      fromDate = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`;
+    } else {
+      const dow = now.getUTCDay();
+      const diff = dow === 0 ? 6 : dow - 1;
+      const monday = new Date(now);
+      monday.setUTCDate(now.getUTCDate() - diff);
+      fromDate = monday.toISOString().slice(0, 10);
+    }
+
+    const supabase = getSupabaseServerClient();
+    const rows = await fetchAll<{ date_utc: string; total_tokens: number }>((from, to) =>
+      supabase
+        .from("usage_events")
+        .select("date_utc,total_tokens")
+        .gte("date_utc", fromDate)
+        .lte("date_utc", toDate)
+        .range(from, to) as unknown as Promise<{ data: any[] | null; error: any }>,
+    );
+
+    const byDate = new Map<string, number>();
+    for (const r of rows) {
+      byDate.set(r.date_utc, (byDate.get(r.date_utc) ?? 0) + (r.total_tokens ?? 0));
+    }
+
+    const buckets: { label: string; tokens: number }[] = [];
+    const cursor = new Date(`${fromDate}T00:00:00Z`);
+    const end = new Date(`${toDate}T00:00:00Z`);
+    while (cursor <= end) {
+      const key = cursor.toISOString().slice(0, 10);
+      const shortLabel = cursor.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+      buckets.push({ label: shortLabel, tokens: byDate.get(key) ?? 0 });
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+
+    return { buckets, fromDate, toDate };
+  } catch (err) {
+    console.error("[data.getWrapPeriodBuckets] Unexpected error:", err);
+    return { buckets: [], fromDate: "", toDate: "" };
   }
 }
 

@@ -5,8 +5,8 @@
  * Styled as a "Spotify Wrapped"-style shareable stats page.
  */
 
-import { getWrapStats } from "@/lib/data";
-import { formatTokens, formatCost, formatDateShort, formatTokensCompact, formatCostCompact } from "@/lib/utils";
+import { getWrapStats, getWrapPeriodBuckets } from "@/lib/data";
+import { formatTokens, formatTokensExact, formatCost, formatDateShort, formatTokensCompact, formatCostCompact } from "@/lib/utils";
 import {
   Card,
   CardContent,
@@ -32,9 +32,10 @@ async function getPeriodStats(period: "year" | "month" | "week") {
 export default async function WrapPage({ searchParams }: { searchParams?: Promise<{ period?: string }> }) {
   const sp = (await searchParams) ?? {};
   const period = (sp.period === "month" || sp.period === "week" ? sp.period : "year") as "year" | "month" | "week";
-  const [stats, periodStats] = await Promise.all([
+  const [stats, periodStats, periodBuckets] = await Promise.all([
     getWrapStats(),
     period === "year" ? Promise.resolve(null) : getPeriodStats(period),
+    period !== "year" ? getWrapPeriodBuckets(period) : Promise.resolve(null),
   ]);
 
   if (!stats) {
@@ -64,11 +65,11 @@ export default async function WrapPage({ searchParams }: { searchParams?: Promis
     monthlyTotals,
   } = stats;
 
-  // Bar chart data
-  const barData = monthlyTotals.map((m) => ({
-    label: m.label,
-    tokens: m.tokens,
-  }));
+  // Bar chart data — use period-specific daily buckets when toggled to month/week;
+  // fall back to YTD monthly data for the year view.
+  const barData = periodBuckets && periodBuckets.buckets.length > 0
+    ? periodBuckets.buckets
+    : monthlyTotals.map((m) => ({ label: m.label, tokens: m.tokens }));
 
   return (
     <div className="p-6 space-y-6 max-w-4xl">
@@ -109,7 +110,7 @@ export default async function WrapPage({ searchParams }: { searchParams?: Promis
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div>
                 <div className="text-xs text-muted-foreground">Tokens</div>
-                <div className="text-xl font-semibold tabular-nums">{formatTokens(Number(periodStats.totalTokens) || 0)}</div>
+                <div className="text-xl font-semibold tabular-nums" title={formatTokensExact(Number(periodStats.totalTokens) || 0)}>{formatTokens(Number(periodStats.totalTokens) || 0)}</div>
               </div>
               <div>
                 <div className="text-xs text-muted-foreground">Cost</div>
@@ -137,7 +138,7 @@ export default async function WrapPage({ searchParams }: { searchParams?: Promis
             </CardDescription>
           </CardHeader>
           <CardContent className="px-4 pb-4 overflow-hidden">
-            <p className="text-3xl font-black tabular-nums leading-none truncate" title={formatTokens(totalTokens)}>
+            <p className="text-3xl font-black tabular-nums leading-none truncate" title={formatTokensExact(totalTokens)}>
               {formatTokensCompact(totalTokens)}
             </p>
             <p className="text-xs text-muted-foreground mt-1">generated in {year}</p>
@@ -184,7 +185,7 @@ export default async function WrapPage({ searchParams }: { searchParams?: Promis
             </CardDescription>
           </CardHeader>
           <CardContent className="px-4 pb-4 overflow-hidden">
-            <p className="text-3xl font-black tabular-nums leading-none truncate" title={formatTokens(peakDayTokens)}>
+            <p className="text-3xl font-black tabular-nums leading-none truncate" title={formatTokensExact(peakDayTokens)}>
               {formatTokensCompact(peakDayTokens)}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
@@ -204,7 +205,7 @@ export default async function WrapPage({ searchParams }: { searchParams?: Promis
           </CardHeader>
           <CardContent className="px-4 pb-4">
             <p className="text-xl font-bold truncate">{topModel ?? "—"}</p>
-            <p className="text-sm text-muted-foreground mt-0.5 tabular-nums">
+            <p className="text-sm text-muted-foreground mt-0.5 tabular-nums" title={formatTokensExact(topModelTokens)}>
               {formatTokens(topModelTokens)} tokens
             </p>
           </CardContent>
@@ -218,7 +219,7 @@ export default async function WrapPage({ searchParams }: { searchParams?: Promis
           </CardHeader>
           <CardContent className="px-4 pb-4">
             <p className="text-xl font-bold">{topMonth ?? "—"}</p>
-            <p className="text-sm text-muted-foreground mt-0.5 tabular-nums">
+            <p className="text-sm text-muted-foreground mt-0.5 tabular-nums" title={formatTokensExact(topMonthTokens)}>
               {formatTokens(topMonthTokens)} tokens
             </p>
           </CardContent>
@@ -246,7 +247,7 @@ export default async function WrapPage({ searchParams }: { searchParams?: Promis
               <div key={p.provider} className="space-y-1">
                 <div className="flex items-center justify-between text-sm">
                   <span className="font-medium capitalize">{p.provider}</span>
-                  <span className="tabular-nums text-muted-foreground">
+                  <span className="tabular-nums text-muted-foreground" title={formatTokensExact(p.tokens)}>
                     {formatTokens(p.tokens)} · {p.pct}%
                     {p.cost != null && ` · ${formatCost(p.cost)}`}
                   </span>
@@ -282,7 +283,7 @@ export default async function WrapPage({ searchParams }: { searchParams?: Promis
                   )}
                 </div>
                 <div className="text-right shrink-0">
-                  <p className="text-sm font-medium tabular-nums">
+                  <p className="text-sm font-medium tabular-nums" title={formatTokensExact(p.tokens)}>
                     {formatTokens(p.tokens)}
                   </p>
                   <p className="text-xs text-muted-foreground tabular-nums">

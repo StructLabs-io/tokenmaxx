@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { cn, formatTokens, formatTokensExact } from "@/lib/utils";
 import type { QuotaWindow } from "@/lib/supabase/types";
 
 interface WindowCardProps {
@@ -10,6 +10,11 @@ interface WindowCardProps {
    * Null renders an "unknown" state (dimmed bar).
    */
   fillPct: number | null;
+  /**
+   * Estimated token cap derived from tokens_in_window / fillPct.
+   * When provided, replaces the "Cap: unknown" label.
+   */
+  estimatedCap?: number | null;
 }
 
 function fillColor(pct: number): string {
@@ -26,7 +31,7 @@ function deriveProvider(label: string): string {
   return label.split("—")[0].trim();
 }
 
-export function WindowCard({ window: qw, fillPct }: WindowCardProps) {
+export function WindowCard({ window: qw, fillPct, estimatedCap }: WindowCardProps) {
   const isUnknown = fillPct == null;
   const pct = isUnknown ? 0 : fillPct;
   const pctDisplay = Math.round(pct * 100);
@@ -61,9 +66,18 @@ export function WindowCard({ window: qw, fillPct }: WindowCardProps) {
           ) : (
             <span>{pctDisplay}% used</span>
           )}
-          <span className="text-amber-500 dark:text-amber-400">
-            Cap: unknown
-          </span>
+          {estimatedCap != null ? (
+            <span
+              className="text-muted-foreground"
+              title={`Estimated cap: ${formatTokensExact(estimatedCap)}`}
+            >
+              Cap: ~{formatTokens(estimatedCap)}
+            </span>
+          ) : (
+            <span className="text-amber-500 dark:text-amber-400">
+              Cap: unknown
+            </span>
+          )}
         </div>
 
         {qw.notes && (

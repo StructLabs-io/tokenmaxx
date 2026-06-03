@@ -2,7 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { DataTable } from "@/components/ui/data-table";
-import { formatCost, formatTokens } from "@/lib/utils";
+import { formatCost, formatTokens, formatTokensExact } from "@/lib/utils";
 
 const PROVIDER_BADGE: Record<string, string> = {
   anthropic: "bg-indigo-500/15 text-indigo-400 border-indigo-500/30",
@@ -34,17 +34,26 @@ const columns: any[] = [
   {
     accessorKey: "input_tokens",
     header: "Input Tokens",
-    cell: (info: any) => <span className="text-right tabular-nums text-xs text-muted-foreground">{formatTokens(info.getValue() as number)}</span>,
+    cell: (info: any) => {
+      const n = info.getValue() as number;
+      return <span className="text-right tabular-nums text-xs text-muted-foreground" title={n >= 1_000_000_000 ? formatTokensExact(n) : undefined}>{formatTokens(n)}</span>;
+    },
   },
   {
     accessorKey: "output_tokens",
     header: "Output Tokens",
-    cell: (info: any) => <span className="text-right tabular-nums text-xs text-muted-foreground">{formatTokens(info.getValue() as number)}</span>,
+    cell: (info: any) => {
+      const n = info.getValue() as number;
+      return <span className="text-right tabular-nums text-xs text-muted-foreground" title={n >= 1_000_000_000 ? formatTokensExact(n) : undefined}>{formatTokens(n)}</span>;
+    },
   },
   {
     accessorKey: "total_tokens",
     header: "Total Tokens",
-    cell: (info: any) => <span className="text-right tabular-nums text-xs font-medium">{formatTokens(info.getValue() as number)}</span>,
+    cell: (info: any) => {
+      const n = info.getValue() as number;
+      return <span className="text-right tabular-nums text-xs font-medium" title={n >= 1_000_000_000 ? formatTokensExact(n) : undefined}>{formatTokens(n)}</span>;
+    },
   },
   {
     accessorKey: "cost_usd",

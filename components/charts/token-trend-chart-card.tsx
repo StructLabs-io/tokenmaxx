@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { UsageBarChart } from "@/components/charts/usage-bar";
 import { UsageStackedBarChart } from "@/components/charts/usage-stacked-bar";
-import { formatCost, formatTokens } from "@/lib/utils";
+import { formatCost, formatTokens, formatTokensExact } from "@/lib/utils";
 import { DEFAULT_PREFS, loadPrefs, savePrefs } from "@/lib/preferences";
 
 export type Bucket = { label: string; tokens: number; cost: number };
@@ -221,7 +221,7 @@ export function TokenTrendChartCard({
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
             <CardTitle className="text-sm font-medium">{titleSuffix} trend</CardTitle>
-            <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">
+            <p className="text-xs text-muted-foreground mt-0.5 tabular-nums" title={totals.tokens >= 1_000_000_000 ? formatTokensExact(totals.tokens) : undefined}>
               {formatTokens(totals.tokens)} tokens · {formatCost(totals.cost)}
             </p>
           </div>
