@@ -205,6 +205,8 @@ export interface QuotaWindowWithUsage {
   window_hours: number | null;
   tokens_in_window: number;
   notes: string | null;
+  /** Historical cap estimate (p50) from fn_quota_caps_inferred; null if no inference data */
+  estimated_cap_p50?: number | null;
 }
 
 /** Subscription with rolled-up 30-day usage and quota window data */

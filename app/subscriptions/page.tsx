@@ -120,7 +120,16 @@ function SubscriptionCard({ sub }: { sub: SubscriptionSummary }) {
                   <p className="font-medium tabular-nums" title={formatTokensExact(w.tokens_in_window)}>{formatTokens(w.tokens_in_window)}</p>
                   <p className="text-xs text-muted-foreground">
                     Cap:{" "}
-                    <span className="text-amber-500 dark:text-amber-400">unknown</span>
+                    {w.estimated_cap_p50 != null ? (
+                      <span
+                        className="text-foreground tabular-nums"
+                        title={`Estimated cap (historical p50): ${formatTokensExact(w.estimated_cap_p50)}`}
+                      >
+                        ~{formatTokens(w.estimated_cap_p50)}
+                      </span>
+                    ) : (
+                      <span className="text-amber-500 dark:text-amber-400">unknown</span>
+                    )}
                   </p>
                 </div>
               </div>

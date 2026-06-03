@@ -176,7 +176,7 @@ export default async function QuotaPage() {
                       estimatedCap={
                         detail.fillPct != null && detail.fillPct > 0 && detail.tokens_in_window > 0
                           ? Math.round(detail.tokens_in_window / detail.fillPct)
-                          : null
+                          : caps.get(detail.id)?.p50 ?? null
                       }
                     />
 
@@ -264,9 +264,16 @@ export default async function QuotaPage() {
                     {w.fillPct != null && w.fillPct > 0 && w.tokens_in_window > 0 ? (
                       <span
                         className="ml-2 text-xs text-muted-foreground"
-                        title={`Estimated cap: ${formatTokensExact(Math.round(w.tokens_in_window / w.fillPct))}`}
+                        title={`Estimated cap (live): ${formatTokensExact(Math.round(w.tokens_in_window / w.fillPct))}`}
                       >
                         / ~{formatTokens(Math.round(w.tokens_in_window / w.fillPct))}
+                      </span>
+                    ) : caps.get(w.id) ? (
+                      <span
+                        className="ml-2 text-xs text-muted-foreground"
+                        title={`Estimated cap (historical p50): ${formatTokensExact(caps.get(w.id)!.p50)}`}
+                      >
+                        / ~{formatTokens(caps.get(w.id)!.p50)}
                       </span>
                     ) : (
                       <span className="ml-2 text-xs text-amber-500 dark:text-amber-400">

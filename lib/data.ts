@@ -106,7 +106,7 @@ export async function getDashboardStats(days = 14): Promise<DashboardStats & { u
     console.error("[data.getDashboardStats] RPC failed, falling back:", rpcErr);
     const supabaseFallback = getSupabaseServerClient();
     const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - days);
+    cutoff.setDate(cutoff.getDate() - (days - 1)); // inclusive window: days=30 → 30 calendar days
     const cutoffDate = cutoff.toISOString().slice(0, 10);
 
     const events = await fetchAll<any>((from, to) =>
@@ -235,7 +235,7 @@ export async function getProjectsList(days = 30): Promise<{
     if (rpcErr) console.error("[fn_projects_summary] falling back:", rpcErr);
 
     const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - days);
+    cutoff.setDate(cutoff.getDate() - (days - 1)); // inclusive window: days=30 → 30 calendar days
     const cutoffDate = cutoff.toISOString().slice(0, 10);
 
     const { data: projectRows, error: projErr } = await supabase
@@ -387,7 +387,7 @@ export async function getProjectDetail(slug: string): Promise<ProjectDetailResul
     const events = SEED_USAGE_EVENTS.filter((e) => e.project_id === project.id)
       .sort((a, b) => new Date(b.captured_at).getTime() - new Date(a.captured_at).getTime());
 
-    return buildProjectDetail(project, events, true);
+    return buildProjectDetail(project, events, events.slice(0, 10), true);
   }
 
   try {
@@ -404,19 +404,30 @@ export async function getProjectDetail(slug: string): Promise<ProjectDetailResul
       return emptyProjectDetail();
     }
 
-    const { data: events, error: evtErr } = await supabase
+    // Fetch all events for full historical aggregation (daily totals + model breakdown).
+    // Only the columns needed for aggregation are selected to keep payload small.
+    const aggEvents = await fetchAll<any>((from, to) =>
+      supabase
+        .from("usage_events")
+        .select("date_utc,model,total_tokens,cost_usd,captured_at")
+        .eq("project_id", projectRow.id)
+        .range(from, to) as unknown as Promise<{ data: any[] | null; error: any }>,
+    );
+
+    // Fetch top-10 most recent events separately (full columns for display).
+    const { data: recentEvents, error: evtErr } = await supabase
       .from("usage_events")
       .select("*")
       .eq("project_id", projectRow.id)
       .order("captured_at", { ascending: false })
-      .limit(200) as { data: any[] | null; error: any };
+      .limit(10) as { data: any[] | null; error: any };
 
     if (evtErr) {
       console.error("[data.getProjectDetail] Events error:", evtErr);
       return { ...emptyProjectDetail(), project: projectRow as Project };
     }
 
-    return buildProjectDetail(projectRow as Project, (events ?? []) as UsageEvent[], false);
+    return buildProjectDetail(projectRow as Project, aggEvents as UsageEvent[], (recentEvents ?? []) as UsageEvent[], false);
   } catch (err) {
     console.error("[data.getProjectDetail] Unexpected error:", err);
     return emptyProjectDetail();
@@ -425,12 +436,13 @@ export async function getProjectDetail(slug: string): Promise<ProjectDetailResul
 
 function buildProjectDetail(
   project: Project,
-  events: UsageEvent[],
+  aggEvents: UsageEvent[],
+  recentEvents: UsageEvent[],
   usingSeedData: boolean
 ): ProjectDetailResult {
-  // Daily totals (group by date_utc)
+  // Daily totals (group by date_utc) — computed over full event history
   const byDate = new Map<string, { tokens: number; cost: number | null }>();
-  for (const e of events) {
+  for (const e of aggEvents) {
     const date = e.date_utc;
     const existing = byDate.get(date) ?? { tokens: 0, cost: null };
     byDate.set(date, {
@@ -442,9 +454,9 @@ function buildProjectDetail(
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, { tokens, cost }]) => ({ date, tokens, cost }));
 
-  // Model breakdown
+  // Model breakdown — computed over full event history
   const byModel = new Map<string, { tokens: number; cost: number | null }>();
-  for (const e of events) {
+  for (const e of aggEvents) {
     const existing = byModel.get(e.model) ?? { tokens: 0, cost: null };
     byModel.set(e.model, {
       tokens: existing.tokens + e.total_tokens,
@@ -455,11 +467,11 @@ function buildProjectDetail(
     .map(([model, data]) => ({ model, ...data }))
     .sort((a, b) => b.tokens - a.tokens);
 
-  const totalTokens = events.reduce((s, e) => s + e.total_tokens, 0);
-  const hasCost = events.some((e) => e.cost_usd != null);
-  const totalCost = hasCost ? events.reduce((s, e) => s + (e.cost_usd ?? 0), 0) : null;
+  const totalTokens = aggEvents.reduce((s, e) => s + e.total_tokens, 0);
+  const hasCost = aggEvents.some((e) => e.cost_usd != null);
+  const totalCost = hasCost ? aggEvents.reduce((s, e) => s + (e.cost_usd ?? 0), 0) : null;
 
-  return { project, events: events.slice(0, 10), dailyTotals, modelBreakdown, totalTokens, totalCost, usingSeedData };
+  return { project, events: recentEvents, dailyTotals, modelBreakdown, totalTokens, totalCost, usingSeedData };
 }
 
 function emptyProjectDetail(): ProjectDetailResult {
@@ -711,7 +723,7 @@ export async function getSubscriptionsSummary(): Promise<{
 
     // 3. Load 30-day usage events for all providers in one shot
     const cutoff30 = new Date();
-    cutoff30.setDate(cutoff30.getDate() - 30);
+    cutoff30.setDate(cutoff30.getDate() - 29); // inclusive 30-day window
     const cutoffDate30 = cutoff30.toISOString().slice(0, 10);
 
     const providers = [...new Set(subs.map((s) => s.provider))];
@@ -754,8 +766,24 @@ export async function getSubscriptionsSummary(): Promise<{
         window_hours: w.window_hours,
         tokens_in_window: tokens,
         notes: w.notes,
+        estimated_cap_p50: null, // populated in step 5b
       };
     });
+
+    // 5b. Fetch historical cap estimates and attach to windows
+    try {
+      const { data: capsData } = await (supabase as any).rpc("fn_quota_caps_inferred");
+      if (Array.isArray(capsData)) {
+        const capByWindowId = new Map<number, number>();
+        for (const r of capsData) {
+          capByWindowId.set(r.window_id, Number(r.cap_p50) || 0);
+        }
+        for (const w of windowResults) {
+          const p50 = capByWindowId.get(w.id);
+          if (p50 && p50 > 0) w.estimated_cap_p50 = p50;
+        }
+      }
+    } catch { /* non-fatal: cap inference is best-effort */ }
 
     // 6. Assemble
     const subscriptions: SubscriptionSummary[] = subs.map((s: any) => ({
@@ -944,7 +972,7 @@ export async function getModelBreakdown(days?: number): Promise<ModelBreakdownRo
   try {
     const supabase = getSupabaseServerClient();
     const cutoffDate = days != null
-      ? (() => { const c = new Date(); c.setDate(c.getDate() - days); return c.toISOString().slice(0, 10); })()
+      ? (() => { const c = new Date(); c.setDate(c.getDate() - (days - 1)); return c.toISOString().slice(0, 10); })() // inclusive window
       : null;
 
     const data = await fetchAll<any>((from, to) => {
@@ -1305,7 +1333,7 @@ export async function getUsersSummary(days = 30): Promise<{
 
     // Fetch usage events for the period
     const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - days);
+    cutoff.setDate(cutoff.getDate() - (days - 1)); // inclusive window: days=30 → 30 calendar days
     const cutoffDate = cutoff.toISOString().slice(0, 10);
 
     const userIds = (userRows as any[]).map((u) => u.id);
