@@ -741,7 +741,7 @@ export async function getSubscriptionsSummary(): Promise<{
       let tokens = 0;
       for (const e of allEvents) {
         if (e.provider === subs.find((s: any) => s.id === w.subscription_id)?.provider) {
-          if (e.captured_at >= start) {
+          if (new Date(e.captured_at).getTime() >= new Date(start).getTime()) {
             tokens += e.total_tokens ?? 0;
           }
         }

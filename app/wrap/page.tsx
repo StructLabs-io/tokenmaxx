@@ -246,7 +246,7 @@ export default async function WrapPage({ searchParams }: { searchParams?: Promis
             {providerBreakdown.map((p) => (
               <div key={p.provider} className="space-y-1">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium capitalize">{p.provider}</span>
+                  <span className="font-medium">{p.provider === "anthropic" ? "Anthropic" : p.provider === "openai-codex" ? "OpenAI Codex" : p.provider}</span>
                   <span className="tabular-nums text-muted-foreground" title={formatTokensExact(p.tokens)}>
                     {formatTokens(p.tokens)} · {p.pct}%
                     {p.cost != null && ` · ${formatCost(p.cost)}`}
