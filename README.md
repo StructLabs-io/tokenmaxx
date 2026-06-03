@@ -4,6 +4,35 @@ Track what your AI subscriptions actually cost — by project, by model, by day.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
+[![TokenMaxx dashboard — click to try the live demo](docs/screenshots/01-dashboard.png)](https://tokenmaxx.structlabs.io)
+
+<sub><em>↑ Click the dashboard to open the live demo at <a href="https://tokenmaxx.structlabs.io">tokenmaxx.structlabs.io</a></em></sub>
+
+<details>
+<summary><b>More screenshots</b> — Usage, Projects, Raw Events, Models, Subscriptions, Quota, Wrapped, Users</summary>
+
+<br/>
+
+<table>
+<tr>
+  <td align="center"><a href="docs/screenshots/02-usage.png"><img src="docs/screenshots/02-usage.png" width="280" alt="Usage"/></a><br/><sub>Usage</sub></td>
+  <td align="center"><a href="docs/screenshots/03-projects.png"><img src="docs/screenshots/03-projects.png" width="280" alt="Projects"/></a><br/><sub>Projects</sub></td>
+  <td align="center"><a href="docs/screenshots/04-raw-events.png"><img src="docs/screenshots/04-raw-events.png" width="280" alt="Raw Events"/></a><br/><sub>Raw Events</sub></td>
+</tr>
+<tr>
+  <td align="center"><a href="docs/screenshots/05-models.png"><img src="docs/screenshots/05-models.png" width="280" alt="Models"/></a><br/><sub>Models</sub></td>
+  <td align="center"><a href="docs/screenshots/06-subscriptions.png"><img src="docs/screenshots/06-subscriptions.png" width="280" alt="Subscriptions"/></a><br/><sub>Subscriptions</sub></td>
+  <td align="center"><a href="docs/screenshots/07-quota.png"><img src="docs/screenshots/07-quota.png" width="280" alt="Quota"/></a><br/><sub>Quota</sub></td>
+</tr>
+<tr>
+  <td align="center"><a href="docs/screenshots/08-wrapped.png"><img src="docs/screenshots/08-wrapped.png" width="280" alt="Wrapped"/></a><br/><sub>Wrapped</sub></td>
+  <td align="center"><a href="docs/screenshots/09-users.png"><img src="docs/screenshots/09-users.png" width="280" alt="Users"/></a><br/><sub>Users</sub></td>
+  <td></td>
+</tr>
+</table>
+
+</details>
+
 ---
 
 ## What is this?
