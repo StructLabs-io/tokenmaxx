@@ -641,6 +641,14 @@ function windowStart(windowType: string, windowHours: number | null): string {
 // Demo-mode shortcut. Returns the fictional subscriptions and lets the
 // remainder of the function tree short-circuit cleanly without paginating
 // against Supabase.
+// Realistic cap estimates for demo quota windows (inferred from typical Claude/Codex Pro usage patterns)
+const DEMO_CAP_BY_WINDOW_ID: Record<number, number> = {
+  1: 2_850_000,   // Claude Max — 5h rolling (~2.85M tokens)
+  2: 27_500_000,  // Claude Max — weekly (~27.5M tokens)
+  3: 2_320_000,   // Codex Pro — 5h rolling (~2.32M tokens)
+  4: 21_800_000,  // Codex Pro — weekly (~21.8M tokens)
+};
+
 async function demoSubscriptionsSummary() {
   const { demoSubscriptions, demoEvents, demoQuotaWindowDetails } = await import("../demo/demo-mode-flag");
   const subs = demoSubscriptions();
@@ -677,6 +685,7 @@ async function demoSubscriptionsSummary() {
           window_hours: w.window_hours,
           tokens_in_window: w.tokens_in_window,
           notes: w.notes,
+          estimated_cap_p50: DEMO_CAP_BY_WINDOW_ID[w.id] ?? null,
         })),
       } as any;
     }),

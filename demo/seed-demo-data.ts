@@ -64,7 +64,7 @@ const SAMPLE_TITLES = [
   "explain why this useEffect runs twice in strict mode",
   "set up the brand audit deck — start with the existing palette",
   "schedule the next cohort onboarding for Birchwood",
-  "compare the gpt-4o vs claude-opus-4-7 outputs on the discovery triage prompt",
+  "compare the gpt-5.5 vs claude-opus-4-7 outputs on the discovery triage prompt",
   "add a webhook trigger when the new POS row hits the catalog feed",
   "review the calendar triage flow — too many false positives on personal events",
 ];
