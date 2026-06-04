@@ -238,6 +238,7 @@ interface ProjectsClientProps {
   totalTokens: number;
   unattributedCount: number;
   usingSeedData: boolean;
+  isDemoMode?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -249,6 +250,7 @@ export function ProjectsClient({
   totalTokens: initialTotalTokens,
   unattributedCount,
   usingSeedData,
+  isDemoMode = false,
 }: ProjectsClientProps) {
   const [projects, setProjects] = useState<ProjectRow[]>(initialProjects);
   const totalTokens = projects.reduce((s, p) => s + p.totalTokens, 0);
@@ -369,19 +371,23 @@ export function ProjectsClient({
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Badge
-            variant={usingSeedData ? "secondary" : "outline"}
-            className="text-xs"
-          >
-            {usingSeedData ? "Seed data" : `${projects.length} project${projects.length !== 1 ? "s" : ""}`}
-          </Badge>
-          <button
-            onClick={openAdd}
-            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
-          >
-            <PlusCircle className="h-4 w-4" />
-            Add project
-          </button>
+          {!isDemoMode && (
+            <Badge
+              variant={usingSeedData ? "secondary" : "outline"}
+              className="text-xs"
+            >
+              {usingSeedData ? "Seed data" : `${projects.length} project${projects.length !== 1 ? "s" : ""}`}
+            </Badge>
+          )}
+          {!isDemoMode && (
+            <button
+              onClick={openAdd}
+              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+            >
+              <PlusCircle className="h-4 w-4" />
+              Add project
+            </button>
+          )}
         </div>
       </div>
 

@@ -118,6 +118,13 @@ export function demoUsersSummary(days = 30) {
     ex.cost += e.cost_usd;
     byUser.set(e.user_id, ex);
   }
+  const DEMO_USER_TIMEZONES: Record<string, string> = {
+    "demo-user-rivera": "America/Los_Angeles",
+    "demo-user-osei": "Europe/London",
+    "demo-user-svc-ci": "Australia/Sydney",
+    "demo-user-svc-bot": "Asia/Kuala_Lumpur",
+  };
+
   const rows = users.map((u) => {
     const m = byUser.get(u.id) ?? { tokens: 0, cost: 0 };
     return {
@@ -126,7 +133,7 @@ export function demoUsersSummary(days = 30) {
       display_name: u.display_name,
       account_type: u.kind as "human" | "service",
       email: u.kind === "human" ? `${u.display_name.toLowerCase().replace(/\s+/g, ".")}@demo.tokenmaxx.example` : null,
-      default_timezone: "Asia/Singapore",
+      default_timezone: DEMO_USER_TIMEZONES[u.id] ?? "UTC",
       total_tokens: m.tokens,
       cost_usd: m.cost,
     };

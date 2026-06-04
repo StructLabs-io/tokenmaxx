@@ -5,7 +5,7 @@
  * Falls back to seed data automatically when SUPABASE_SERVICE_ROLE_KEY is not set.
  */
 
-import { getDashboardStats, getQuotaWindowDetails } from "@/lib/data";
+import { getDashboardStats, getQuotaWindowDetails, isDemoMode } from "@/lib/data";
 import { formatTokens, formatTokensExact, formatCost } from "@/lib/utils";
 import {
   Card,
@@ -54,9 +54,11 @@ export default async function DashboardPage() {
         </div>
         <div className="flex items-center gap-2">
           <LiveTicker />
-          <Badge variant={usingSeedData ? "secondary" : "outline"} className="text-xs">
-            {usingSeedData ? "Seed data" : `${totalEvents.toLocaleString()} events`}
-          </Badge>
+          {!isDemoMode() && (
+            <Badge variant={usingSeedData ? "secondary" : "outline"} className="text-xs">
+              {usingSeedData ? "Seed data" : `${totalEvents.toLocaleString()} events`}
+            </Badge>
+          )}
         </div>
       </div>
 

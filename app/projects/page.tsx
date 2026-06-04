@@ -6,7 +6,7 @@
  * Falls back to seed data when Supabase is not configured.
  */
 
-import { getProjectsList, isServiceRoleConfigured } from "@/lib/data";
+import { getProjectsList, isServiceRoleConfigured, isDemoMode } from "@/lib/data";
 import { getSupabaseServerClient } from "@/lib/supabase/client";
 import { formatTokens, formatCost } from "@/lib/utils";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -103,6 +103,7 @@ export default async function ProjectsPage() {
         totalTokens={totalTokens}
         unattributedCount={unattributedCount}
         usingSeedData={usingSeedData}
+        isDemoMode={isDemoMode()}
       />
     </div>
   );

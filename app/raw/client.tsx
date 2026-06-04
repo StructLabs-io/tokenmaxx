@@ -134,7 +134,7 @@ export function RawClient({
         <div className="flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2">
           <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
           <p className="text-xs text-amber-600 dark:text-amber-400">
-            Showing seed data — Supabase not configured.
+            Demo mode — showing sample data.
           </p>
         </div>
       ) : (

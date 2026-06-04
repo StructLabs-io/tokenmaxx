@@ -53,14 +53,14 @@ export default async function UsersPage() {
         </Card>
         <Card className="gap-2 py-4">
           <CardHeader className="px-4">
-            <p className="text-xs text-muted-foreground">Human</p>
-            <p className="text-2xl font-bold">{totalHuman}</p>
+            <p className="text-xs text-muted-foreground">Human users — tokens (30d)</p>
+            <p className="text-2xl font-bold tabular-nums" title={formatTokensExact(totalHuman)}>{formatTokens(totalHuman)}</p>
           </CardHeader>
         </Card>
         <Card className="gap-2 py-4">
           <CardHeader className="px-4">
-            <p className="text-xs text-muted-foreground">Service accounts</p>
-            <p className="text-2xl font-bold">{totalService}</p>
+            <p className="text-xs text-muted-foreground">Service accounts — tokens (30d)</p>
+            <p className="text-2xl font-bold tabular-nums" title={formatTokensExact(totalService)}>{formatTokens(totalService)}</p>
           </CardHeader>
         </Card>
         <Card className="gap-2 py-4">

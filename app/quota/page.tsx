@@ -6,7 +6,7 @@
  * and cap placeholders (quota scraping not yet implemented).
  */
 
-import { getQuotaWindowDetails } from "@/lib/data";
+import { getQuotaWindowDetails, isDemoMode } from "@/lib/data";
 import { formatTokens, formatTokensExact } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -131,7 +131,7 @@ export default async function QuotaPage() {
           </code>{" "}
           across recent quota observations (filtered to ≥15% usage, single dominant model). Confidence label reflects sample size + spread. Not official from Anthropic/OpenAI.
         </div>
-      ) : (
+      ) : isDemoMode() ? null : (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-300">
           <span className="font-medium">No cap inference yet</span> — needs more high-percent observations to compute. Use your subscription heavily and the estimate will populate.
         </div>
@@ -159,10 +159,7 @@ export default async function QuotaPage() {
 
               {group.provider === "openai-codex" && (
                 <p className="text-xs text-muted-foreground rounded border border-border bg-muted/40 px-3 py-1.5">
-                  Quota % is polled every 30 min via session cookie.{" "}
-                  <span className="text-foreground/70">
-                    If bars show stale, refresh <code className="font-mono text-[11px]">CHATGPT_SESSION_TOKEN_0/1</code> in <code className="font-mono text-[11px]">shared/.env</code> and crontab.
-                  </span>
+                  Quota data is polled every 30 minutes via live session.
                 </p>
               )}
 
@@ -276,8 +273,8 @@ export default async function QuotaPage() {
                         / ~{formatTokens(caps.get(w.id)!.p50)}
                       </span>
                     ) : (
-                      <span className="ml-2 text-xs text-amber-500 dark:text-amber-400">
-                        / cap unknown
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        / —
                       </span>
                     )}
                   </div>

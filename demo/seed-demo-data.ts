@@ -4,7 +4,7 @@
  * Produces 12 months of plausible usage events. Distribution rules:
  * - Weekdays heavier than weekends
  * - 09:00–18:00 working hours peak
- * - Mantis-like dominant project ~30% of activity (here: "Sandwich Robotics")
+ * - Mantis-like dominant project ~30% of activity (here: "Meridian Robotics")
  * - Trailing 7 days are "today-shaped" so the dashboard never looks stale
  *
  * Used by demo-mode-flag.ts when NEXT_PUBLIC_TOKENMAXX_DEMO=1.
@@ -64,7 +64,7 @@ const SAMPLE_TITLES = [
   "explain why this useEffect runs twice in strict mode",
   "set up the brand audit deck — start with the existing palette",
   "schedule the next cohort onboarding for Birchwood",
-  "compare the gpt-5.5 vs claude-opus-4-7 outputs on the discovery triage prompt",
+  "compare the gpt-4o vs claude-opus-4-7 outputs on the discovery triage prompt",
   "add a webhook trigger when the new POS row hits the catalog feed",
   "review the calendar triage flow — too many false positives on personal events",
 ];
@@ -73,10 +73,10 @@ export function generateDemoEvents(daysBack = 365, today = new Date()): DemoEven
   const rand = rng(42);
   const events: DemoEvent[] = [];
   let id = 1;
-  // Project weights — Sandwich Robotics is the dominant Mantis-equivalent
+  // Project weights — Meridian Robotics is the dominant Mantis-equivalent
   const projectWeights = ALL_PROJECTS.map((p) => ({
     value: p,
-    weight: p.client === "Sandwich Robotics" ? 3
+    weight: p.client === "Meridian Robotics" ? 3
       : p.client === "Internal" ? 2
       : 1,
   }));

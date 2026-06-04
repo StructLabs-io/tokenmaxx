@@ -128,7 +128,7 @@ function SubscriptionCard({ sub }: { sub: SubscriptionSummary }) {
                         ~{formatTokens(w.estimated_cap_p50)}
                       </span>
                     ) : (
-                      <span className="text-amber-500 dark:text-amber-400">unknown</span>
+                      <span className="text-muted-foreground">—</span>
                     )}
                   </p>
                 </div>
