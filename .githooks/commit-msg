@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# N9C portable commit-msg hook: reject AI-model identities as author, committer,
+# or Co-Authored-By. Drop into any repo as .githooks/commit-msg (and set
+# core.hooksPath=.githooks) or as .git/hooks/commit-msg.
+#
+# Rule: commits must be authored by a real N9C agent (Nora, Aden, Kenji, etc.)
+# or Ben. Claude, Anthropic, OpenAI, GPT, Codex, and model family names
+# (Sonnet/Opus/Haiku) are forbidden anywhere in the identity fields.
+#
+# Source: StructLabs-io/n9c-repo shared/scripts/commit-msg-no-ai-identity.sh
+
+set -euo pipefail
+
+msg_file="${1:-}"
+if [[ -z "${msg_file}" || ! -f "${msg_file}" ]]; then
+  exit 0
+fi
+
+AI_IDENT_PATTERN='claude|anthropic|noreply@anthropic\.com|openai|gpt-[0-9]|codex|sonnet|opus|haiku'
+
+errors=()
+
+# Scan all Co-Authored-By trailers
+while IFS= read -r line; do
+  [[ -z "${line}" ]] && continue
+  if echo "${line}" | grep -Eiq "${AI_IDENT_PATTERN}"; then
+    errors+=("AI-model identity forbidden in Co-Authored-By: ${line}")
+  fi
+done < <(grep -E '^Co-Authored-By:' "${msg_file}" || true)
+
+# Check author/committer env vars
+for var_name in GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL; do
+  val="${!var_name:-}"
+  if [[ -n "${val}" ]] && echo "${val}" | grep -Eiq "${AI_IDENT_PATTERN}"; then
+    errors+=("AI-model identity forbidden in ${var_name}='${val}'. Use N9C agent or Ben.")
+  fi
+done
+
+if [[ "${#errors[@]}" -gt 0 ]]; then
+  echo "Commit policy check failed (StructLabs-io / N9C):"
+  for err in "${errors[@]}"; do
+    echo "- ${err}"
+  done
+  echo ""
+  echo "Commits must be authored by a real N9C agent or Ben — no AI model identities."
+  exit 1
+fi
+
+exit 0
