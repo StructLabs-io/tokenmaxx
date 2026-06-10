@@ -195,10 +195,33 @@ Deno.serve(async (_req: Request) => {
     const events7d = allEvents.filter((e) => e.date_utc >= sevenDayStart && e.date_utc <= dateStr);
 
     if (events24h.length === 0) {
-      const text = `📊 <b>TokenMaxx — ${fmtDate(dateStr)}</b>\n\nNo usage captured for this date.`;
-      await sendTelegram(text);
-      return new Response(JSON.stringify({ ok: true, date: dateStr, events: 0 }), {
-        status: 200, headers: { 'Content-Type': 'application/json' },
+      // Zero events for the target date is unexpected — Ben uses Claude/Codex daily
+      // on at least one host. Throw so the cron is visible as a failure, not a
+      // silent green run. This surfaces capture pipeline breaks early.
+      const errMsg = `No usage events captured for ${dateStr} — capture pipeline may be broken`;
+      console.error(`daily-digest: ${errMsg}`);
+      return new Response(JSON.stringify({ error: errMsg, date: dateStr }), {
+        status: 500, headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Validate that at least one known host contributed data. If both MacBook
+    // and Server show zero tokens, the capture pipeline is broken on all hosts.
+    const macEvents = events24h.filter((e) => {
+      const { label } = sourceFromCaptureMethod(e.capture_method);
+      return label === 'MacBook';
+    });
+    const serverEvents = events24h.filter((e) => {
+      const { label } = sourceFromCaptureMethod(e.capture_method);
+      return label === 'Server';
+    });
+    const macTokens = sumTokens(macEvents);
+    const serverTokens = sumTokens(serverEvents);
+    if (macTokens === 0 && serverTokens === 0) {
+      const errMsg = `Events present for ${dateStr} but all hosts report zero tokens — data integrity issue`;
+      console.error(`daily-digest: ${errMsg}`);
+      return new Response(JSON.stringify({ error: errMsg, date: dateStr, events: events24h.length }), {
+        status: 500, headers: { 'Content-Type': 'application/json' },
       });
     }
 
