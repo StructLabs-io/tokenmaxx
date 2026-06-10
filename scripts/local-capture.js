@@ -470,26 +470,52 @@ Environment:
  * deterministic across runs.
  */
 /**
- * Resolve the ccusage binary path. Cron environments strip PATH, so 'npx'
+ * Resolve the ccusage script path. Cron environments strip PATH, so 'npx'
  * and shell shims (nvm) are unavailable. We probe in order:
- *   1. CCUSAGE_BIN env var (explicit override)
- *   2. /opt/homebrew/bin/ccusage (Homebrew install — Ben's Mac default)
+ *   1. CCUSAGE_BIN env var (explicit override — point at the .js script directly)
+ *   2. /opt/homebrew/bin/ccusage resolved to its real path (Homebrew install)
  *   3. Same directory as the node binary that launched this process
  *   4. Fall back to bare 'ccusage' and let execFileSync throw a useful error
+ *
+ * The returned value is always passed as an argument to the node binary
+ * (process.env.NODE_BIN || process.execPath) rather than executed directly,
+ * so the #!/usr/bin/env node shebang never runs under cron (where `env node`
+ * would fail because NVM's PATH is not loaded).
  */
 function resolveCcusageBin() {
   const envBin = process.env.CCUSAGE_BIN;
   if (envBin && fs.existsSync(envBin)) return envBin;
 
-  const homebrewBin = '/opt/homebrew/bin/ccusage';
-  if (fs.existsSync(homebrewBin)) return homebrewBin;
-
-  // Same dir as node (e.g. nvm node dir also contains ccusage)
+  // Prefer the ccusage that lives alongside the running node binary (e.g. nvm).
+  // This is always a JS script (runnable via node), whereas the Homebrew binary
+  // at /opt/homebrew/bin/ccusage is a compiled Mach-O that can't be invoked via
+  // `node <path>`. Probe the node-local bin FIRST.
   const nodeDir = path.dirname(process.execPath);
   const nodeLocalBin = path.join(nodeDir, 'ccusage');
-  if (fs.existsSync(nodeLocalBin)) return nodeLocalBin;
+  if (fs.existsSync(nodeLocalBin)) {
+    try { return fs.realpathSync(nodeLocalBin); } catch (_) { return nodeLocalBin; }
+  }
 
-  return 'ccusage'; // last-resort bare name
+  // Homebrew install — only usable if it's a JS script, not a native binary.
+  // A native binary can't be invoked via `node <path>` and will throw a
+  // SyntaxError; skip it here and fall through to the bare-name fallback.
+  const homebrewBin = '/opt/homebrew/bin/ccusage';
+  if (fs.existsSync(homebrewBin)) {
+    try {
+      const real = fs.realpathSync(homebrewBin);
+      // Read first 4 bytes: ELF magic or Mach-O magic indicate native binary
+      const buf = Buffer.alloc(4);
+      const fd = fs.openSync(real, 'r');
+      fs.readSync(fd, buf, 0, 4, 0);
+      fs.closeSync(fd);
+      const isBinary = (buf[0] === 0x7f && buf[1] === 0x45) || // ELF
+                       (buf[0] === 0xcf && buf[1] === 0xfa) || // Mach-O 64-bit LE
+                       (buf[0] === 0xce && buf[1] === 0xfa);   // Mach-O 32-bit LE
+      if (!isBinary) return real;
+    } catch (_) { /* skip */ }
+  }
+
+  return 'ccusage'; // last-resort bare name — let execFileSync throw a useful error
 }
 
 function collectClaudeViaCcusage(workspaceId, userId, lookbackDays) {
@@ -497,16 +523,19 @@ function collectClaudeViaCcusage(workspaceId, userId, lookbackDays) {
   since.setUTCDate(since.getUTCDate() - lookbackDays);
   const sinceArg = since.toISOString().slice(0, 10).replace(/-/g, '');
 
-  const ccusageBin = resolveCcusageBin();
+  const ccusageScript = resolveCcusageBin();
+  // Invoke ccusage via node explicitly — avoids #!/usr/bin/env node shebang
+  // failure under cron where NVM's PATH isn't loaded.
+  const nodeBin = process.env.NODE_BIN || process.execPath;
   let raw;
   try {
-    raw = execFileSync(ccusageBin, ['daily', '--json', '--since', sinceArg], {
+    raw = execFileSync(nodeBin, [ccusageScript, 'daily', '--json', '--since', sinceArg], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
       maxBuffer: 32 * 1024 * 1024,
     });
   } catch (err) {
-    console.error(`  ccusage CLI failed (bin: ${ccusageBin}): ${err.message}`);
+    console.error(`  ccusage CLI failed (node: ${nodeBin}, script: ${ccusageScript}): ${err.message}`);
     return [];
   }
 
