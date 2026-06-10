@@ -52,6 +52,10 @@
 
   --destructive: 4 86% 50%;
   --destructive-foreground: 0 0% 100%;
+  --success: 142 60% 36%;
+  --success-foreground: 0 0% 100%;
+  --warning: 36 88% 46%;
+  --warning-foreground: 0 0% 9%;
 
   /* structure — HEAVY borders, close to the foreground */
   --border: 0 0% 13%;
@@ -109,6 +113,10 @@
 
   --destructive: 2 85% 62%;
   --destructive-foreground: 0 0% 100%;
+  --success: 142 55% 50%;
+  --success-foreground: 0 0% 9%;
+  --warning: 36 85% 58%;
+  --warning-foreground: 0 0% 9%;
 
   --border: 0 0% 38%;              /* strong, visible grey rule */
   --input: 0 0% 38%;

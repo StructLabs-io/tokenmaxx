@@ -46,7 +46,9 @@
   --destructive: 356 90% 62%;        /* #F54753  neon-tuned red (≠ magenta) */
   --destructive-foreground: 195 16% 96%;
   --success: 150 84% 50%;            /* #14EB80  neon green */
+  --success-foreground: 222 40% 6%;
   --warning: 40 100% 58%;            /* #FFB829  amber */
+  --warning-foreground: 222 40% 6%;
 
   /* ---- Lines & focus -------------------------------------------------- */
   --border: 220 16% 17%;             /* #242932 */

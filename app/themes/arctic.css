@@ -50,6 +50,10 @@
 
   --destructive: 4 74% 52%;         /* alarm red (semantic state only)     */
   --destructive-foreground: 0 0% 100%;
+  --success: 145 56% 38%;           /* ice-toned green                     */
+  --success-foreground: 0 0% 100%;
+  --warning: 38 88% 48%;            /* amber                               */
+  --warning-foreground: 0 0% 9%;
 
   --border: 205 28% 88%;            /* cool hairline                       */
   --input: 205 28% 86%;
@@ -117,6 +121,10 @@
 
   --destructive: 4 64% 46%;
   --destructive-foreground: 0 0% 100%;
+  --success: 145 52% 50%;           /* brighter ice-green for dark         */
+  --success-foreground: 0 0% 9%;
+  --warning: 38 88% 60%;            /* amber on dark                       */
+  --warning-foreground: 0 0% 9%;
 
   --border: 202 26% 16%;
   --input: 202 26% 19%;

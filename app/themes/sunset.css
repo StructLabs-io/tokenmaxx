@@ -73,7 +73,9 @@
 
   /* ---- positive / warning semantic hues (warm-leaning) ---- */
   --success: 152 56% 40%;
+  --success-foreground: 0 0% 100%;
   --warning: 36 96% 50%;
+  --warning-foreground: 0 0% 9%;
 }
 
 /* ----------------------------------------------------------------------------
@@ -120,7 +122,9 @@
   --sidebar-ring: 18 92% 60%;
 
   --success: 152 52% 52%;
+  --success-foreground: 0 0% 9%;
   --warning: 38 96% 60%;
+  --warning-foreground: 0 0% 9%;
 }
 
 /* ----------------------------------------------------------------------------

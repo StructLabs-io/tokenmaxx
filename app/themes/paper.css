@@ -55,7 +55,9 @@
   --destructive: 6 52% 47%;        /* muted brick red, tuned to paper */
   --destructive-foreground: 42 46% 97%;
   --success: 150 28% 36%;          /* muted sage, for positive deltas */
+  --success-foreground: 42 46% 97%;
   --warning: 34 60% 46%;           /* amber, quota nearing cap */
+  --warning-foreground: 28 16% 15%;
 
   /* ---- Lines & focus ---- */
   --border: 36 22% 83%;
@@ -115,7 +117,9 @@
   --destructive: 6 50% 53%;
   --destructive-foreground: 40 30% 92%;
   --success: 150 30% 52%;
+  --success-foreground: 0 0% 9%;
   --warning: 34 62% 56%;
+  --warning-foreground: 0 0% 9%;
 
   --border: 28 8% 24%;
   --input: 28 8% 24%;

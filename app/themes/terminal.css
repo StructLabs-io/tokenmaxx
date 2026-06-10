@@ -56,7 +56,10 @@
 
   --destructive: 18 100% 56%;      /* amber-orange (kept clear of red≈green)  */
   --destructive-foreground: 0 0% 4%;
+  --success: 135 100% 50%;         /* signature terminal green = success      */
+  --success-foreground: 0 0% 0%;
   --warning: 38 100% 56%;          /* amber — stale / caution states          */
+  --warning-foreground: 0 0% 0%;
 
   --border: 135 38% 15%;           /* dim green grid line                     */
   --input: 135 38% 15%;
