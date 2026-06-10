@@ -131,16 +131,16 @@ export function RawClient({
     <>
       {/* Status banner */}
       {usingSeedData ? (
-        <div className="flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-          <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
-          <p className="text-xs text-amber-600 dark:text-amber-400">
+        <div className="flex items-center gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2">
+          <span className="h-2 w-2 rounded-full bg-warning animate-pulse" />
+          <p className="text-xs text-warning">
             Demo mode — showing sample data.
           </p>
         </div>
       ) : (
-        <div className="flex items-center gap-2 rounded-md border border-green-500/30 bg-green-500/10 px-3 py-2">
-          <span className="h-2 w-2 rounded-full bg-green-400" />
-          <p className="text-xs text-green-700 dark:text-green-400">
+        <div className="flex items-center gap-2 rounded-md border border-success/30 bg-success/10 px-3 py-2">
+          <span className="h-2 w-2 rounded-full bg-success" />
+          <p className="text-xs text-success">
             Live data — showing first {initialEvents.length} of {totalCount.toLocaleString()} events.
           </p>
         </div>

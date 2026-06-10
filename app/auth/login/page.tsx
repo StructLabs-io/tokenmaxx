@@ -104,7 +104,7 @@ function LoginContent() {
               )}
 
               {error && <p className="text-xs text-destructive">{error}</p>}
-              {info && <p className="text-xs text-emerald-500">{info}</p>}
+              {info && <p className="text-xs text-success">{info}</p>}
 
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? "Working…" : mode === "magic" ? "Send magic link" : "Sign in"}

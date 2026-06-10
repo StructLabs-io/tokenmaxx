@@ -145,9 +145,9 @@ export default async function WrapPage({ searchParams }: { searchParams?: Promis
           </CardContent>
         </Card>
 
-        <Card className="bg-emerald-500/10 border-emerald-500/20">
+        <Card className="bg-success/10 border-success/20">
           <CardHeader className="pb-1 px-4 pt-4">
-            <CardDescription className="text-xs text-emerald-400/80 uppercase tracking-wide font-medium">
+            <CardDescription className="text-xs text-success/80 uppercase tracking-wide font-medium">
               Total spend
             </CardDescription>
           </CardHeader>
@@ -164,9 +164,9 @@ export default async function WrapPage({ searchParams }: { searchParams?: Promis
           </CardContent>
         </Card>
 
-        <Card className="bg-violet-500/10 border-violet-500/20">
+        <Card className="bg-accent border-border">
           <CardHeader className="pb-1 px-4 pt-4">
-            <CardDescription className="text-xs text-violet-400/80 uppercase tracking-wide font-medium">
+            <CardDescription className="text-xs text-accent-foreground/60 uppercase tracking-wide font-medium">
               Total events
             </CardDescription>
           </CardHeader>
@@ -178,9 +178,9 @@ export default async function WrapPage({ searchParams }: { searchParams?: Promis
           </CardContent>
         </Card>
 
-        <Card className="bg-amber-500/10 border-amber-500/20">
+        <Card className="bg-warning/10 border-warning/20">
           <CardHeader className="pb-1 px-4 pt-4">
-            <CardDescription className="text-xs text-amber-400/80 uppercase tracking-wide font-medium">
+            <CardDescription className="text-xs text-warning/80 uppercase tracking-wide font-medium">
               Peak day
             </CardDescription>
           </CardHeader>

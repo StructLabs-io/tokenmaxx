@@ -69,7 +69,7 @@ export default function SettingsPage() {
             Display + behaviour preferences. Saved to this browser.
           </p>
         </div>
-        {savedAt && <p className="text-xs text-emerald-500">Saved at {savedAt}</p>}
+        {savedAt && <p className="text-xs text-success">Saved at {savedAt}</p>}
       </div>
 
       <Card>
