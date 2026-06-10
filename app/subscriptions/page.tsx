@@ -17,9 +17,9 @@ function providerBadge(provider: string) {
   const label = provider === "anthropic" ? "Anthropic" : provider === "openai-codex" ? "OpenAI Codex" : provider;
   const className =
     provider === "anthropic"
-      ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
+      ? "bg-[#cc785c]/15 text-[#cc785c] dark:text-[#e8916e] border border-[#cc785c]/30"
       : provider === "openai-codex"
-      ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
+      ? "bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30"
       : "bg-muted text-muted-foreground";
   return (
     <span

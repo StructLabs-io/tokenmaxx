@@ -14,10 +14,10 @@ import { ModelsClient } from "./client";
 export const dynamic = "force-dynamic";
 
 const PROVIDER_BADGE: Record<string, string> = {
-  anthropic: "bg-indigo-500/15 text-indigo-400 border-indigo-500/30",
-  openai: "bg-green-500/15 text-green-400 border-green-500/30",
-  "openai-codex": "bg-blue-500/15 text-blue-400 border-blue-500/30",
-  google: "bg-orange-500/15 text-orange-400 border-orange-500/30",
+  anthropic: "bg-[#cc785c]/15 text-[#cc785c] dark:text-[#e8916e] border-[#cc785c]/30",
+  openai: "bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/30",
+  "openai-codex": "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/30",
+  google: "bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-500/30",
 };
 
 function providerBadgeClass(provider: string): string {
