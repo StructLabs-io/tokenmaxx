@@ -17,10 +17,6 @@ const STORAGE_KEY = "tokenmaxx:sidebar-collapsed";
 export function LayoutShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
-  // Auth pages stand alone — no sidebar, no toggle.
-  if (pathname?.startsWith("/auth/")) {
-    return <main className="min-h-screen bg-background">{children}</main>;
-  }
 
   useEffect(() => {
     try {
@@ -28,6 +24,11 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
       if (stored === "1") setCollapsed(true);
     } catch {}
   }, []);
+
+  // Auth pages stand alone — no sidebar, no toggle.
+  if (pathname?.startsWith("/auth/")) {
+    return <main className="min-h-screen bg-background">{children}</main>;
+  }
 
   function toggle() {
     setCollapsed((c) => {
