@@ -124,15 +124,15 @@ export default async function QuotaPage() {
 
       {/* Cap inference notice */}
       {caps.size > 0 ? (
-        <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 dark:border-blue-800/50 dark:bg-blue-950/30 dark:text-blue-300">
+        <div className="rounded-md border border-border bg-muted/40 px-4 py-3 text-sm text-foreground">
           <span className="font-medium">Estimated caps shown</span> — best-effort inference from{" "}
-          <code className="text-xs bg-blue-100 dark:bg-blue-900/40 px-1 py-0.5 rounded">
+          <code className="text-xs bg-muted px-1 py-0.5 rounded">
             tokens_observed / (percent_used / 100)
           </code>{" "}
           across recent quota observations (filtered to ≥15% usage, single dominant model). Confidence label reflects sample size + spread. Not official from Anthropic/OpenAI.
         </div>
       ) : isDemoMode() ? null : (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-300">
+        <div className="rounded-md border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning">
           <span className="font-medium">No cap inference yet</span> — needs more high-percent observations to compute. Use your subscription heavily and the estimate will populate.
         </div>
       )}
@@ -186,9 +186,9 @@ export default async function QuotaPage() {
                             <span
                               className={
                                 caps.get(detail.id)!.confidence === "high"
-                                  ? "text-emerald-500"
+                                  ? "text-success"
                                   : caps.get(detail.id)!.confidence === "medium"
-                                  ? "text-amber-500"
+                                  ? "text-warning"
                                   : "text-muted-foreground/60"
                               }
                               title={`Confidence: ${caps.get(detail.id)!.confidence} (n=${caps.get(detail.id)!.n} samples)`}

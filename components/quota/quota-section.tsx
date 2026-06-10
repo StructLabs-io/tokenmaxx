@@ -25,9 +25,9 @@ interface Props {
 const TOGGLE_STORAGE_KEY = "tokenmaxx:quota:display-mode";
 
 function fillColor(pct: number): string {
-  if (pct >= 0.8) return "bg-red-500";
-  if (pct >= 0.6) return "bg-amber-400";
-  return "bg-indigo-500";
+  if (pct >= 0.8) return "bg-destructive";
+  if (pct >= 0.6) return "bg-warning";
+  return "bg-primary";
 }
 
 function MiniWindow({ w, mode }: { w: Window; mode: "used" | "remaining" }) {
@@ -118,7 +118,7 @@ export function QuotaSection({ windows }: Props) {
       </div>
 
       {codexStale && (
-        <p className="text-xs rounded border border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-300 px-3 py-1.5">
+        <p className="text-xs rounded border border-warning/40 bg-warning/10 text-warning-foreground px-3 py-1.5">
           ⚠ Codex quota data is stale. Tokens will auto-refresh on the next quota-codex cron (every 30 min).
         </p>
       )}
@@ -128,7 +128,7 @@ export function QuotaSection({ windows }: Props) {
           <Card>
             <CardHeader className="px-5 pt-4 pb-2">
               <div className="flex items-center gap-2">
-                <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-[#cc785c] text-white text-sm font-bold">C</span>
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-[#cc785c] dark:bg-[#e8916e] text-white text-sm font-bold">C</span>
                 <CardTitle className="text-sm font-semibold">Anthropic Claude</CardTitle>
               </div>
             </CardHeader>

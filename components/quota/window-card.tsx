@@ -18,9 +18,9 @@ interface WindowCardProps {
 }
 
 function fillColor(pct: number): string {
-  if (pct >= 0.8) return "bg-red-500";
-  if (pct >= 0.6) return "bg-amber-400";
-  return "bg-indigo-500";
+  if (pct >= 0.8) return "bg-destructive";
+  if (pct >= 0.6) return "bg-warning";
+  return "bg-primary";
 }
 
 function deriveProvider(label: string): string {
@@ -74,7 +74,7 @@ export function WindowCard({ window: qw, fillPct, estimatedCap }: WindowCardProp
               Cap: ~{formatTokens(estimatedCap)}
             </span>
           ) : (
-            <span className="text-amber-500 dark:text-amber-400">
+            <span className="text-warning">
               Cap: unknown
             </span>
           )}
