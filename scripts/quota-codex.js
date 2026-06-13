@@ -248,8 +248,15 @@ function autoHealRefreshTokens() {
     console.log(`quota-codex: auto-heal — refresh script not found at ${refreshScript}`);
     return false;
   }
+  // Resolve python3 with full path — 'python3' alone fails in cron (no PATH)
+  // and pycookiecheat needs Keychain which is only accessible in a GUI session.
+  // The auto-heal will succeed when called from an interactive session; in cron
+  // it will fail gracefully and the user is notified via the "still no wham"
+  // message. The LaunchAgent (io.structlabs.tokenmaxx.refresh-chatgpt-tokens.plist)
+  // handles the scheduled GUI-session refresh.
+  const python3 = '/opt/homebrew/bin/python3';
   try {
-    const out = execFileSync('python3', [refreshScript, '--out', envOut], {
+    const out = execFileSync(python3, [refreshScript, '--out', envOut], {
       encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
     });
     console.log(`quota-codex: ${out.trim()}`);
