@@ -15,7 +15,7 @@ import {
   GitMerge,
   LogOut,
   Users,
-  Github,
+  ExternalLink,
   Settings,
   PanelLeftClose,
 } from "lucide-react";
@@ -141,8 +141,8 @@ export function Sidebar({ onToggle }: { onToggle?: () => void }) {
           rel="noopener noreferrer"
           className="flex items-center gap-2.5 rounded-full px-3 py-1.5 text-xs text-sidebar-foreground border border-sidebar-border transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground w-fit"
         >
-          <Github className="h-3.5 w-3.5 shrink-0" />
-          View on GitHub
+          <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+          Public repo
         </a>
         <div className="px-3 pt-1 text-[10px] text-sidebar-foreground/60 font-mono">
           v{process.env.TOKENMAXX_VERSION ?? "dev"}
