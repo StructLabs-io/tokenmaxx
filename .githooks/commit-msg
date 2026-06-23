@@ -16,7 +16,7 @@ if [[ -z "${msg_file}" || ! -f "${msg_file}" ]]; then
   exit 0
 fi
 
-AI_IDENT_PATTERN='claude|anthropic|noreply@anthropic\.com|openai|gpt-[0-9]|codex|sonnet|opus|haiku'
+AI_IDENT_PATTERN='claude|calude|anthropic|noreply.com|openai|gpt([[:space:]_.-]*[0-9])?|codex|sonnet|opus|haiku'
 
 errors=()
 
