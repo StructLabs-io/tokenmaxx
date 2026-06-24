@@ -53,7 +53,7 @@ function MiniWindow({ w, mode }: { w: Window; mode: "used" | "remaining" }) {
           <div className="h-full rounded-full bg-muted-foreground/30 w-full" />
         ) : (
           <div
-            className={cn("h-full rounded-full transition-all", fillColor(usedPct))}
+            className={cn("h-full rounded-full transition-[width,background-color] duration-300 ease-out", fillColor(usedPct))}
             style={{ width: `${Math.round(shownPct * 100)}%` }}
           />
         )}

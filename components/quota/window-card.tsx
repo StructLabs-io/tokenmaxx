@@ -54,7 +54,7 @@ export function WindowCard({ window: qw, fillPct, estimatedCap }: WindowCardProp
             <div className="h-full rounded-full bg-muted-foreground/30 w-full" />
           ) : (
             <div
-              className={cn("h-full rounded-full transition-all", fillColor(pct))}
+              className={cn("h-full rounded-full transition-[width,background-color] duration-300 ease-out", fillColor(pct))}
               style={{ width: `${pctDisplay}%` }}
             />
           )}

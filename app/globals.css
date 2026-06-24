@@ -143,9 +143,24 @@
     border-color: hsl(var(--border));
   }
 
+  /* MIFB §8 — antialiased on html so all text (not just body class) renders
+     thin on macOS, including portals/dialogs that escape body. */
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
     font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* MIFB §10 — short headings balance; body paragraphs avoid orphans. */
+  h1, h2, h3, h4, h5, h6 {
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
   }
 }

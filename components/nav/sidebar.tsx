@@ -98,7 +98,10 @@ export function Sidebar({ onToggle }: { onToggle?: () => void }) {
             type="button"
             onClick={onToggle}
             aria-label="Hide sidebar"
-            className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            // MIFB §16 — visible 28x28 chrome, hit area extended to 40x40 via
+            // pseudo-element so the button stays a tight pill against the brand
+            // mark without overlapping siblings. MIFB §12 — active:scale on press.
+            className="relative inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-[color,background-color,scale] duration-150 ease-out active:scale-[0.96] after:absolute after:inset-0 after:-m-1.5 after:content-['']"
           >
             <PanelLeftClose className="h-4 w-4" />
           </button>
@@ -118,7 +121,8 @@ export function Sidebar({ onToggle }: { onToggle?: () => void }) {
                 <Link
                   href={item.href}
                   className={cn(
-                    "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
+                    // MIFB §16 — py-2.5 lifts sidebar nav rows from 36px to 40px tall.
+                    "flex items-center gap-2.5 rounded-md px-3 py-2.5 text-sm transition-colors",
                     isActive
                       ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
                       : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -152,7 +156,8 @@ export function Sidebar({ onToggle }: { onToggle?: () => void }) {
         <form action="/auth/logout" method="POST">
           <button
             type="submit"
-            className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            // MIFB §16 — py-2.5 lifts row to 40px to match nav items above.
+            className="flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
           >
             <LogOut className="h-4 w-4 shrink-0" />
             Sign out

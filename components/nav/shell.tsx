@@ -48,7 +48,9 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
             type="button"
             onClick={toggle}
             aria-label="Show sidebar"
-            className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            // MIFB §16 — 28x28 visible chrome on a 40px rail, hit area extended
+            // to 40x40 via after:-inset margins. MIFB §12 — active:scale press.
+            className="relative inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-[color,background-color,scale] duration-150 ease-out active:scale-[0.96] after:absolute after:inset-0 after:-m-1.5 after:content-['']"
           >
             <PanelLeftOpen className="h-4 w-4" />
           </button>
