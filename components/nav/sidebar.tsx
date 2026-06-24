@@ -122,7 +122,9 @@ export function Sidebar({ onToggle }: { onToggle?: () => void }) {
                   href={item.href}
                   className={cn(
                     // MIFB §16 — py-2.5 lifts sidebar nav rows from 36px to 40px tall.
-                    "flex items-center gap-2.5 rounded-md px-3 py-2.5 text-sm transition-colors",
+                    // Emil: name the properties + duration; tap-feedback scale on press so a
+                    // tap registers tactile, not silent.
+                    "flex items-center gap-2.5 rounded-md px-3 py-2.5 text-sm transition-[background-color,color,scale] duration-150 ease-out active:scale-[0.98]",
                     isActive
                       ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
                       : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -157,7 +159,8 @@ export function Sidebar({ onToggle }: { onToggle?: () => void }) {
           <button
             type="submit"
             // MIFB §16 — py-2.5 lifts row to 40px to match nav items above.
-            className="flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            // Emil: explicit transition + scale on press matches nav-item feel above.
+            className="flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-sm text-sidebar-foreground transition-[background-color,color,scale] duration-150 ease-out active:scale-[0.98] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
           >
             <LogOut className="h-4 w-4 shrink-0" />
             Sign out
