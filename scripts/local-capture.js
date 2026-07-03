@@ -635,58 +635,117 @@ Environment:
  * deterministic across runs.
  */
 /**
- * Resolve the ccusage script path. Cron environments strip PATH, so 'npx'
- * and shell shims (nvm) are unavailable. We probe in order:
- *   1. CCUSAGE_BIN env var (explicit override — point at the .js script directly)
- *   2. /opt/homebrew/bin/ccusage resolved to its real path (Homebrew install)
- *   3. Same directory as the node binary that launched this process
- *   4. Fall back to bare 'ccusage' and let execFileSync throw a useful error
- *
- * The returned value is always passed as an argument to the node binary
- * (process.env.NODE_BIN || process.execPath) rather than executed directly,
- * so the #!/usr/bin/env node shebang never runs under cron (where `env node`
- * would fail because NVM's PATH is not loaded).
+ * Minimum acceptable ccusage major version. ccusage < 20 does not deduplicate
+ * streamed JSONL usage entries (the same assistant message is re-written to
+ * the transcript on every stream update), which inflated daily token counts
+ * by 2x-46x and produced five-figure fake daily costs. ccusage >= 20 dedupes
+ * on (message.id, requestId). Never run an older build.
  */
-function resolveCcusageBin() {
-  const envBin = process.env.CCUSAGE_BIN;
-  if (envBin && fs.existsSync(envBin)) return envBin;
+const CCUSAGE_MIN_MAJOR = 20;
 
-  // Prefer the ccusage that lives alongside the running node binary (e.g. nvm).
-  // This is always a JS script (runnable via node), whereas the Homebrew binary
-  // at /opt/homebrew/bin/ccusage is a compiled Mach-O that can't be invoked via
-  // `node <path>`. Probe the node-local bin FIRST.
-  const nodeDir = path.dirname(process.execPath);
-  const nodeLocalBin = path.join(nodeDir, 'ccusage');
-  if (fs.existsSync(nodeLocalBin)) {
-    try { return fs.realpathSync(nodeLocalBin); } catch (_) { return nodeLocalBin; }
+/**
+ * Resolve a runnable, version-checked ccusage. Cron environments strip PATH,
+ * so 'npx' and shell shims (nvm) are unavailable. We probe candidates:
+ *   1. CCUSAGE_BIN env var (explicit override)
+ *   2. Same directory as the node binary that launched this process (nvm)
+ *   3. /opt/homebrew/bin/ccusage resolved to its real path (Homebrew install)
+ *   4. Bare 'ccusage' from PATH
+ * Each candidate may be a JS script (run via the current node binary) or a
+ * native compiled binary (run directly). Every candidate is probed with
+ * --version and rejected if it is older than CCUSAGE_MIN_MAJOR; among the
+ * survivors the highest version wins. Returns { file, native, version } or
+ * throws if no acceptable ccusage exists.
+ */
+function isNativeBinary(file) {
+  try {
+    const buf = Buffer.alloc(4);
+    const fd = fs.openSync(file, 'r');
+    fs.readSync(fd, buf, 0, 4, 0);
+    fs.closeSync(fd);
+    return (buf[0] === 0x7f && buf[1] === 0x45) || // ELF
+           (buf[0] === 0xcf && buf[1] === 0xfa) || // Mach-O 64-bit LE
+           (buf[0] === 0xce && buf[1] === 0xfa);   // Mach-O 32-bit LE
+  } catch (_) {
+    return false;
   }
-
-  // Homebrew install — only usable if it's a JS script, not a native binary.
-  // A native binary can't be invoked via `node <path>` and will throw a
-  // SyntaxError; skip it here and fall through to the bare-name fallback.
-  const homebrewBin = '/opt/homebrew/bin/ccusage';
-  if (fs.existsSync(homebrewBin)) {
-    try {
-      const real = fs.realpathSync(homebrewBin);
-      // Read first 4 bytes: ELF magic or Mach-O magic indicate native binary
-      const buf = Buffer.alloc(4);
-      const fd = fs.openSync(real, 'r');
-      fs.readSync(fd, buf, 0, 4, 0);
-      fs.closeSync(fd);
-      const isBinary = (buf[0] === 0x7f && buf[1] === 0x45) || // ELF
-                       (buf[0] === 0xcf && buf[1] === 0xfa) || // Mach-O 64-bit LE
-                       (buf[0] === 0xce && buf[1] === 0xfa);   // Mach-O 32-bit LE
-      if (!isBinary) return real;
-    } catch (_) { /* skip */ }
-  }
-
-  return 'ccusage'; // last-resort bare name — let execFileSync throw a useful error
 }
 
-function runCcusageJson(ccusageScript, args) {
+function ccusageVersionOf(candidate) {
   const nodeBin = process.env.NODE_BIN || process.execPath;
-  const command = ccusageScript === 'ccusage' ? ccusageScript : nodeBin;
-  const commandArgs = ccusageScript === 'ccusage' ? args : [ccusageScript, ...args];
+  const command = candidate.native || candidate.bare ? candidate.file : nodeBin;
+  const args = candidate.native || candidate.bare ? ['--version'] : [candidate.file, '--version'];
+  try {
+    const out = execFileSync(command, args, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 30000,
+    });
+    const m = out.match(/(\d+)\.(\d+)\.(\d+)/);
+    if (!m) return null;
+    return { major: Number(m[1]), minor: Number(m[2]), patch: Number(m[3]), text: m[0] };
+  } catch (_) {
+    return null;
+  }
+}
+
+function resolveCcusageBin() {
+  const candidates = [];
+
+  const envBin = process.env.CCUSAGE_BIN;
+  if (envBin && fs.existsSync(envBin)) {
+    candidates.push({ file: envBin, native: isNativeBinary(envBin), bare: false, source: 'CCUSAGE_BIN' });
+  }
+
+  const nodeLocalBin = path.join(path.dirname(process.execPath), 'ccusage');
+  if (fs.existsSync(nodeLocalBin)) {
+    let real = nodeLocalBin;
+    try { real = fs.realpathSync(nodeLocalBin); } catch (_) { /* keep symlink path */ }
+    candidates.push({ file: real, native: isNativeBinary(real), bare: false, source: 'node-local' });
+  }
+
+  const homebrewBin = '/opt/homebrew/bin/ccusage';
+  if (fs.existsSync(homebrewBin)) {
+    let real = homebrewBin;
+    try { real = fs.realpathSync(homebrewBin); } catch (_) { /* keep symlink path */ }
+    candidates.push({ file: real, native: isNativeBinary(real), bare: false, source: 'homebrew' });
+  }
+
+  candidates.push({ file: 'ccusage', native: false, bare: true, source: 'PATH' });
+
+  let best = null;
+  const rejected = [];
+  for (const c of candidates) {
+    const v = ccusageVersionOf(c);
+    if (!v) continue;
+    if (v.major < CCUSAGE_MIN_MAJOR) {
+      rejected.push(`${c.source} (${c.file}) v${v.text}`);
+      continue;
+    }
+    if (!best || v.major > best.v.major ||
+        (v.major === best.v.major && v.minor > best.v.minor) ||
+        (v.major === best.v.major && v.minor === best.v.minor && v.patch > best.v.patch)) {
+      best = { ...c, v };
+    }
+  }
+
+  for (const r of rejected) {
+    console.error(`  ccusage candidate rejected (< v${CCUSAGE_MIN_MAJOR}, no stream dedupe): ${r}`);
+  }
+  if (!best) {
+    throw new Error(
+      `No ccusage >= v${CCUSAGE_MIN_MAJOR} found. Older builds double-count streamed ` +
+      `usage entries and must not be used. Install/update ccusage or set CCUSAGE_BIN.`
+    );
+  }
+  console.log(`  ccusage: ${best.file} v${best.v.text} (${best.source}${best.native ? ', native' : ''})`);
+  return { file: best.file, native: best.native, bare: best.bare };
+}
+
+function runCcusageJson(ccusage, args) {
+  const nodeBin = process.env.NODE_BIN || process.execPath;
+  const direct = ccusage.native || ccusage.bare;
+  const command = direct ? ccusage.file : nodeBin;
+  const commandArgs = direct ? args : [ccusage.file, ...args];
   const raw = execFileSync(command, commandArgs, {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
