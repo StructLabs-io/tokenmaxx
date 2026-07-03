@@ -39,6 +39,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 let CODEX_SESSIONS_DIR = process.env.CODEX_SESSIONS_DIR || path.join(HOME, '.codex', 'sessions');
+let CLAUDE_PROJECTS_DIR = process.env.CLAUDE_PROJECTS_DIR || path.join(HOME, '.claude', 'projects');
 let STATE_FILE = process.env.TOKENMAXX_LOCAL_STATE_FILE || path.join(HOME, '.config', 'tokenmaxx', 'local-state.json');
 
 // User's local timezone for date_local derivation. Defaults to MYT for Ben's MacBook.
@@ -47,6 +48,9 @@ const USER_TIMEZONE = process.env.TOKENMAXX_USER_TIMEZONE || 'Asia/Kuala_Lumpur'
 // Rolling-window backfill: each run re-processes session files modified in
 // the last N days. Supabase upsert dedupes. This mirrors the ECIS pattern.
 const LOOKBACK_DAYS = parseInt(process.env.TOKENMAXX_LOOKBACK_DAYS || '7', 10);
+const CLAUDE_ATTRIBUTION_MIN_SHARE = Number.parseFloat(
+  process.env.TOKENMAXX_CLAUDE_ATTRIBUTION_MIN_SHARE || '0.58',
+);
 
 // 4th segment of capture_method — distinguishes per-machine context.
 // MacBook default: ben_macbook. Override on the n9c server with `openclaw`.
@@ -134,23 +138,40 @@ async function batchInsertEvents(rows, dryRun) {
     }
     return { inserted: deduped.length, failed: 0 };
   }
-  const BATCH = 100;
+  const BATCH = parseInt(process.env.TOKENMAXX_UPSERT_BATCH_SIZE || '25', 10);
   let inserted = 0, failed = 0;
-  for (let i = 0; i < deduped.length; i += BATCH) {
-    const chunk = deduped.slice(i, i + BATCH);
-    try {
-      await supabaseRequest(
-        // on_conflict targets the unique constraint columns directly so
-        // PostgREST upserts rather than rejecting with 409.
-        'usage_events?on_conflict=user_id,capture_method,session_id,model,date_utc',
-        'POST', chunk, {
-          Prefer: 'resolution=merge-duplicates,return=minimal',
-        },
-      );
-      inserted += chunk.length;
-    } catch (err) {
-      console.error(`    FAIL batch (${chunk.length} rows): ${err.message}`);
-      failed += chunk.length;
+  // Important: do not send project_id/project_hint when we have no label.
+  // PostgREST upsert updates supplied columns on conflict; sending null here
+  // wipes later manual/AI attribution during the rolling-window recapture.
+  const labelled = [];
+  const unlabelled = [];
+  for (const row of deduped) {
+    if (row.project_id || row.project_hint) labelled.push(row);
+    else {
+      const copy = { ...row };
+      delete copy.project_id;
+      delete copy.project_hint;
+      unlabelled.push(copy);
+    }
+  }
+
+  for (const group of [labelled, unlabelled]) {
+    for (let i = 0; i < group.length; i += BATCH) {
+      const chunk = group.slice(i, i + BATCH);
+      try {
+        await supabaseRequest(
+          // on_conflict targets the unique constraint columns directly so
+          // PostgREST upserts rather than rejecting with 409.
+          'usage_events?on_conflict=user_id,capture_method,session_id,model,date_utc',
+          'POST', chunk, {
+            Prefer: 'resolution=merge-duplicates,return=minimal',
+          },
+        );
+        inserted += chunk.length;
+      } catch (err) {
+        console.error(`    FAIL batch (${chunk.length} rows): ${err.message}`);
+        failed += chunk.length;
+      }
     }
   }
   return { inserted, failed };
@@ -173,6 +194,11 @@ function cacheReadTokens(usage) {
   );
 }
 
+function uncachedInputTokens(usage) {
+  const input = usage.input_tokens || usage.prompt_tokens || 0;
+  return Math.max(0, input - cacheReadTokens(usage));
+}
+
 // --- Codex CLI sessions sweep ---
 
 function hasUsageTokens(usage) {
@@ -183,40 +209,73 @@ function hasUsageTokens(usage) {
   ));
 }
 
-function collectUsageObjects(obj, out = []) {
-  if (!obj || typeof obj !== 'object') return out;
-  if (hasUsageTokens(obj.usage)) out.push(obj.usage);
-  if (obj.info && typeof obj.info === 'object' && hasUsageTokens(obj.info.last_token_usage)) {
-    out.push(obj.info.last_token_usage);
-  }
-  for (const value of Object.values(obj)) {
-    if (value && typeof value === 'object' && value !== obj.usage && value !== obj.info) {
-      collectUsageObjects(value, out);
+function collectUsageObjects(obj) {
+  const out = [];
+  const seen = new WeakSet();
+  const stack = [obj];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || typeof current !== 'object' || seen.has(current)) continue;
+    seen.add(current);
+
+    if (hasUsageTokens(current.usage)) out.push(current.usage);
+    if (current.info && typeof current.info === 'object' && hasUsageTokens(current.info.last_token_usage)) {
+      out.push(current.info.last_token_usage);
+    }
+
+    for (const value of Object.values(current)) {
+      if (value && typeof value === 'object' && value !== current.usage && value !== current.info) {
+        stack.push(value);
+      }
     }
   }
+
   return out;
 }
 
 function listJsonlFiles(rootDir) {
   const files = [];
   if (!fs.existsSync(rootDir)) return files;
-  for (const entry of fs.readdirSync(rootDir, { withFileTypes: true })) {
-    const p = path.join(rootDir, entry.name);
-    if (entry.isDirectory()) files.push(...listJsonlFiles(p));
-    else if (entry.isFile() && entry.name.startsWith('rollout-') && entry.name.endsWith('.jsonl')) {
-      files.push(p);
+
+  const stack = [rootDir];
+  while (stack.length > 0) {
+    const dir = stack.pop();
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch (_) {
+      continue;
+    }
+
+    for (const entry of entries) {
+      const p = path.join(dir, entry.name);
+      if (entry.isDirectory()) stack.push(p);
+      else if (entry.isFile() && entry.name.startsWith('rollout-') && entry.name.endsWith('.jsonl')) {
+        files.push(p);
+      }
     }
   }
+
   return files;
 }
 
 function parseCodexSession(fpath) {
   const lines = fs.readFileSync(fpath, 'utf8').split('\n');
   const meta = {};
-  let inputTokens = 0, outputTokens = 0, cachedTokens = 0;
+  const usageByModel = new Map();
   let usageEvents = 0, lastTotalUsage = null;
   let model = 'gpt-5.3-codex';
   let firstUserPrompt = null;
+
+  function addUsage(modelName, usage) {
+    const key = modelName || model;
+    const current = usageByModel.get(key) || { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
+    current.inputTokens += uncachedInputTokens(usage);
+    current.outputTokens += usage.output_tokens || usage.completion_tokens || 0;
+    current.cachedTokens += cacheReadTokens(usage);
+    usageByModel.set(key, current);
+  }
 
   for (const line of lines) {
     if (!line.trim()) continue;
@@ -242,24 +301,23 @@ function parseCodexSession(fpath) {
       }
       if (event.model) model = event.model;
       if (event.payload && event.payload.model) model = event.payload.model;
+      const eventModel = event.model || (event.payload && event.payload.model) || model;
       if (event.info && hasUsageTokens(event.info.total_token_usage)) {
         lastTotalUsage = event.info.total_token_usage;
       }
       for (const usage of collectUsageObjects(event)) {
-        inputTokens += usage.input_tokens || usage.prompt_tokens || 0;
-        outputTokens += usage.output_tokens || usage.completion_tokens || 0;
-        cachedTokens += cacheReadTokens(usage);
+        addUsage(eventModel, usage);
         usageEvents++;
       }
     } catch (_) {}
   }
 
   if (lastTotalUsage) {
-    inputTokens = lastTotalUsage.input_tokens || lastTotalUsage.prompt_tokens || 0;
-    outputTokens = lastTotalUsage.output_tokens || lastTotalUsage.completion_tokens || 0;
-    cachedTokens = cacheReadTokens(lastTotalUsage);
+    usageByModel.clear();
+    addUsage(model, lastTotalUsage);
   }
-  if (usageEvents === 0 || (inputTokens + outputTokens) === 0) return null;
+  const totals = [...usageByModel.values()];
+  if (usageEvents === 0 || totals.every((t) => (t.inputTokens + t.outputTokens) === 0)) return null;
 
   const ts = meta.timestamp
     ? new Date(meta.timestamp).toISOString()
@@ -276,20 +334,122 @@ function parseCodexSession(fpath) {
     if (!title) title = null;
   }
 
-  return {
+  return [...usageByModel.entries()].map(([modelName, usage]) => ({
     ts,
-    model,
-    inputTokens,
-    outputTokens,
-    cachedTokens,
-    sessionId: meta.id || null,
+    model: modelName,
+    inputTokens: usage.inputTokens,
+    outputTokens: usage.outputTokens,
+    cachedTokens: usage.cachedTokens,
+    sessionId: meta.id || path.basename(fpath, '.jsonl'),
+    sourcePath: fpath,
     cwd: meta.cwd || null,
     title,
-  };
+  }));
 }
 
-// cwd → project_id map. Same rules as the v1 backfill script + the
-// reattribute-codex-buckets.js patterns. Adding new clients = add a rule.
+const PROJECT_IDS = {
+  '10x-ceos': '0dd7535e-7b4d-4c53-aab4-e62a85708d0c',
+  'auknowra-apps': '2eb352f8-df4a-43a9-b3f4-35acd6e6d35c',
+  'internal-structlabs-io-projects': '1eab0b8a-34a4-4d8a-ab13-95bbc0e30ea3',
+  'marketing': '13bc5073-a04d-4ffb-9ad4-0a9d3f12cce6',
+  'mantis': 'd2572c4b-e862-46be-9153-e25a1cc2142b',
+  'n9c': '891449c0-af2b-415d-af6a-ac7d3c9f4756',
+  'omniventure': '81e96884-7c9a-42c6-9372-fa916b9431ec',
+  'personal': '4e27b1c9-a687-43d2-880e-86412c62dec4',
+  'structlabs-clips23': 'd42a649e-3a39-48be-abfd-0e75aefea0bd',
+  'tokenmaxx': '5b0e13ee-f965-4821-9f2b-1c1cf33f1b6b',
+  'wayang': '15f798cd-f654-41bb-bcef-a7e1ccad7a33',
+};
+
+function project(slug) {
+  const id = PROJECT_IDS[slug];
+  return id ? { slug, id } : null;
+}
+
+// cwd/title → project map. Specific client/product paths must precede broad
+// n9c-repo rules because many agents operate from n9c worktrees while doing
+// client/product work.
+const PROJECT_LABEL_RULES = [
+  {
+    slug: 'omniventure',
+    patterns: [
+      /omniventure/i, /omnihoa/i, /bchoa/i, /client acquisition/i,
+      /cold[- ]email/i, /deliverability/i, /hoa/i,
+    ],
+  },
+  {
+    slug: 'tokenmaxx',
+    patterns: [
+      /tokenmaxx/i, /tokenmaxxing/i, /quota[- ]codex/i,
+      /quota monitor/i, /usage_events/i, /capture pipeline/i,
+    ],
+  },
+  {
+    slug: 'mantis',
+    patterns: [
+      /\/repos\/mantis(\/|$)/i, /\/mantis(\/|$)/i, /mantis/i,
+      /polymarket/i, /DANTE/i, /trader[- ]profile/i, /sleeve[- ]b/i,
+      /paper engine/i, /trading loop/i,
+    ],
+  },
+  {
+    slug: '10x-ceos',
+    patterns: [
+      /10XCEOs/i, /10x[-_ ]ceos/i, /strategy coach/i,
+      /mastery/i, /onboarding videos/i,
+    ],
+  },
+  {
+    slug: 'wayang',
+    patterns: [/\/repos\/wayang(\/|$)/i, /wayang/i, /Run It on AI/i],
+  },
+  {
+    slug: 'marketing',
+    patterns: [
+      /\/repos\/structlabsio(\/|$)/i, /structlabsio-variations/i,
+      /portfolio profile/i, /marketing site/i, /content audit/i,
+      /senior UI UX designer/i,
+    ],
+  },
+  {
+    slug: 'auknowra-apps',
+    patterns: [/Auknowra Apps/i],
+  },
+  {
+    slug: 'structlabs-clips23',
+    patterns: [/Clips23/i],
+  },
+  {
+    slug: 'internal-structlabs-io-projects',
+    patterns: [/Ausmat QA/i, /austmat/i, /WhatsApp Chat/i],
+  },
+  {
+    slug: 'personal',
+    patterns: [/coachcleo/i, /personal/i],
+  },
+  {
+    slug: 'n9c',
+    patterns: [
+      /\/Projects\/n9c-repo/i, /\/workspace-[^/]+/i,
+      /neuro9circuit-openclaw/i, /\/repos\/n9c-site/i,
+      /N9C/i, /agent pipeline/i, /ANI/i, /Platform Status Monitor/i,
+      /\bPSM\b/i,
+    ],
+  },
+];
+
+function classifyProject(...parts) {
+  const haystack = parts.filter(Boolean).join('\n');
+  if (!haystack) return null;
+  for (const rule of PROJECT_LABEL_RULES) {
+    if (rule.patterns.some((pattern) => pattern.test(haystack))) {
+      return project(rule.slug);
+    }
+  }
+  return null;
+}
+
+// cwd → project_id map kept for compatibility with older callers.
 const PROJECT_BY_CWD_RULES = [
   [/\/repos\/mantis(\/|$)/, 'd2572c4b-e862-46be-9153-e25a1cc2142b'],
   [/\/Projects\/n9c-repo/, '891449c0-af2b-415d-af6a-ac7d3c9f4756'],
@@ -309,11 +469,11 @@ const PROJECT_BY_CWD_RULES = [
 ];
 
 function projectIdForCwd(cwd) {
-  if (!cwd) return null;
-  for (const [pattern, pid] of PROJECT_BY_CWD_RULES) {
-    if (pattern.test(cwd)) return pid;
-  }
-  return null;
+  return classifyProject(cwd)?.id ?? null;
+}
+
+function attributionForSession(session, sourcePath = null) {
+  return classifyProject(session.cwd, session.title, sourcePath);
 }
 
 // --- State helpers ---
@@ -425,28 +585,33 @@ Environment:
 
   const rows = [];
   for (const { fpath } of allFiles) {
-    const session = parseCodexSession(fpath);
-    if (!session) continue;
+    const sessions = parseCodexSession(fpath);
+    if (!sessions) continue;
+    for (const session of sessions) {
+      const attribution = attributionForSession(session, fpath);
 
-    rows.push({
-      workspace_id: workspaceId,
-      user_id: userId,
-      captured_at: session.ts,
-      date_utc: session.ts.slice(0, 10),
-      date_local: localDateInTz(session.ts, USER_TIMEZONE),
-      provider: 'openai-codex',
-      model: session.model,
-      capture_method: `openai-codex.ccusage.cli.${CAPTURE_CONTEXT}`,
-      aggregation_grain: 'session',
-      session_id: session.sessionId,
-      session_title: session.title,
-      project_id: projectIdForCwd(session.cwd),
-      input_tokens: session.inputTokens,
-      output_tokens: session.outputTokens,
-      cache_creation_tokens: 0,
-      cache_read_tokens: session.cachedTokens,
-      token_share_pct: 100.0,
-    });
+      rows.push({
+        workspace_id: workspaceId,
+        user_id: userId,
+        captured_at: session.ts,
+        date_utc: session.ts.slice(0, 10),
+        date_local: localDateInTz(session.ts, USER_TIMEZONE),
+        provider: 'openai-codex',
+        model: session.model,
+        capture_method: `openai-codex.ccusage.cli.${CAPTURE_CONTEXT}`,
+        aggregation_grain: 'session',
+        session_id: session.sessionId,
+        source_path: session.sourcePath,
+        session_title: session.title,
+        project_id: attribution?.id ?? null,
+        project_hint: attribution?.slug ?? null,
+        input_tokens: session.inputTokens,
+        output_tokens: session.outputTokens,
+        cache_creation_tokens: 0,
+        cache_read_tokens: session.cachedTokens,
+        token_share_pct: 100.0,
+      });
+    }
   }
 
   console.log(`  ${rows.length} sessions to upsert`);
@@ -518,31 +683,152 @@ function resolveCcusageBin() {
   return 'ccusage'; // last-resort bare name — let execFileSync throw a useful error
 }
 
+function runCcusageJson(ccusageScript, args) {
+  const nodeBin = process.env.NODE_BIN || process.execPath;
+  const command = ccusageScript === 'ccusage' ? ccusageScript : nodeBin;
+  const commandArgs = ccusageScript === 'ccusage' ? args : [ccusageScript, ...args];
+  const raw = execFileSync(command, commandArgs, {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  return JSON.parse(raw);
+}
+
+function listAllJsonlFiles(rootDir, cutoffMs) {
+  const files = [];
+  if (!fs.existsSync(rootDir)) return files;
+  for (const entry of fs.readdirSync(rootDir, { withFileTypes: true })) {
+    const p = path.join(rootDir, entry.name);
+    if (entry.isDirectory()) files.push(...listAllJsonlFiles(p, cutoffMs));
+    else if (entry.isFile() && entry.name.endsWith('.jsonl')) {
+      const stat = fs.statSync(p);
+      if (!cutoffMs || stat.mtimeMs >= cutoffMs) files.push(p);
+    }
+  }
+  return files;
+}
+
+function claudeSessionIdFromPath(fpath) {
+  const base = path.basename(fpath, '.jsonl');
+  if (/^[0-9a-f-]{36}$/i.test(base)) return base;
+  const parts = fpath.split(path.sep);
+  return parts.find((part) => /^[0-9a-f-]{36}$/i.test(part)) ?? null;
+}
+
+function readClaudeSessionContext(fpath) {
+  const text = fs.readFileSync(fpath, 'utf8');
+  const lines = text.split('\n');
+  let cwd = null;
+  let title = null;
+  let firstPrompt = null;
+
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    try {
+      const event = JSON.parse(line);
+      if (!cwd && typeof event.cwd === 'string') cwd = event.cwd;
+      if (event.type === 'custom-title' && typeof event.customTitle === 'string') {
+        title = event.customTitle;
+      }
+      if (!firstPrompt && event.type === 'user' && event.message) {
+        const content = event.message.content;
+        if (typeof content === 'string') firstPrompt = content;
+        else if (Array.isArray(content)) {
+          const part = content.find((item) => item && typeof item.text === 'string');
+          if (part) firstPrompt = part.text;
+        }
+      }
+    } catch (_) {}
+  }
+
+  const promptTitle = firstPrompt
+    ? firstPrompt
+        .replace(/<environment_context>[\s\S]*?<\/environment_context>/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 500)
+    : null;
+
+  return { cwd, title: title || promptTitle, sourcePath: fpath };
+}
+
+function buildClaudeContextIndex(lookbackDays) {
+  const cutoffMs = Date.now() - lookbackDays * 24 * 60 * 60 * 1000;
+  const index = new Map();
+  for (const fpath of listAllJsonlFiles(CLAUDE_PROJECTS_DIR, cutoffMs)) {
+    const sessionId = claudeSessionIdFromPath(fpath);
+    if (!sessionId || index.has(sessionId)) continue;
+    try {
+      const context = readClaudeSessionContext(fpath);
+      const attribution = classifyProject(context.cwd, context.title, context.sourcePath);
+      if (attribution) index.set(sessionId, attribution);
+    } catch (_) {}
+  }
+  return index;
+}
+
+function buildClaudeSessionAttribution(ccusageScript, sinceArg, lookbackDays) {
+  const byDateModel = new Map();
+  let data;
+  try {
+    data = runCcusageJson(ccusageScript, ['session', '--json', '--since', sinceArg]);
+  } catch (err) {
+    console.error(`  ccusage session attribution failed: ${err.message}`);
+    return byDateModel;
+  }
+
+  const contextBySession = buildClaudeContextIndex(lookbackDays);
+  for (const session of data.session ?? []) {
+    if (session.agent && session.agent !== 'claude') continue;
+    const sessionId = session.period;
+    const attribution = contextBySession.get(sessionId);
+    if (!attribution) continue;
+    const date = (session.metadata?.lastActivity || '').slice(0, 10);
+    if (!date) continue;
+
+    for (const m of session.modelBreakdowns ?? []) {
+      const modelName = m.modelName;
+      if (!modelName || modelName === '<synthetic>') continue;
+      const total = (m.inputTokens ?? 0) + (m.outputTokens ?? 0) +
+        (m.cacheCreationTokens ?? 0) + (m.cacheReadTokens ?? 0);
+      if (total === 0) continue;
+      const key = `${date}\x00${modelName}`;
+      if (!byDateModel.has(key)) byDateModel.set(key, new Map());
+      const projectTotals = byDateModel.get(key);
+      projectTotals.set(attribution.slug, (projectTotals.get(attribution.slug) ?? 0) + total);
+    }
+  }
+
+  return byDateModel;
+}
+
+function attributionForClaudeDaily(sessionAttribution, date, modelName) {
+  const projectTotals = sessionAttribution.get(`${date}\x00${modelName}`);
+  if (!projectTotals || projectTotals.size === 0) return null;
+  const entries = [...projectTotals.entries()].sort((a, b) => b[1] - a[1]);
+  const [slug, tokens] = entries[0];
+  const total = entries.reduce((sum, [, value]) => sum + value, 0);
+  if (!total || tokens / total < CLAUDE_ATTRIBUTION_MIN_SHARE) return null;
+  return project(slug);
+}
+
+function isClaudeModel(modelName) {
+  return /^claude\b/i.test(modelName);
+}
+
 function collectClaudeViaCcusage(workspaceId, userId, lookbackDays) {
   const since = new Date();
   since.setUTCDate(since.getUTCDate() - lookbackDays);
   const sinceArg = since.toISOString().slice(0, 10).replace(/-/g, '');
 
   const ccusageScript = resolveCcusageBin();
-  // Invoke ccusage via node explicitly — avoids #!/usr/bin/env node shebang
-  // failure under cron where NVM's PATH isn't loaded.
-  const nodeBin = process.env.NODE_BIN || process.execPath;
-  let raw;
-  try {
-    raw = execFileSync(nodeBin, [ccusageScript, 'daily', '--json', '--since', sinceArg], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-      maxBuffer: 32 * 1024 * 1024,
-    });
-  } catch (err) {
-    console.error(`  ccusage CLI failed (node: ${nodeBin}, script: ${ccusageScript}): ${err.message}`);
-    return [];
-  }
-
+  const sessionAttribution = buildClaudeSessionAttribution(ccusageScript, sinceArg, lookbackDays);
   let data;
-  try { data = JSON.parse(raw); }
-  catch (err) {
-    console.error(`  ccusage JSON parse failed: ${err.message}`);
+  try {
+    data = runCcusageJson(ccusageScript, ['daily', '--json', '--since', sinceArg]);
+  } catch (err) {
+    console.error(`  ccusage CLI failed (script: ${ccusageScript}): ${err.message}`);
     return [];
   }
 
@@ -554,7 +840,7 @@ function collectClaudeViaCcusage(workspaceId, userId, lookbackDays) {
     if (!date) continue;
     for (const m of day.modelBreakdowns ?? []) {
       const modelName = m.modelName;
-      if (!modelName || modelName === '<synthetic>') continue;
+      if (!modelName || modelName === '<synthetic>' || !isClaudeModel(modelName)) continue;
       const input = m.inputTokens ?? 0;
       const output = m.outputTokens ?? 0;
       const cacheCreate = m.cacheCreationTokens ?? 0;
@@ -562,6 +848,7 @@ function collectClaudeViaCcusage(workspaceId, userId, lookbackDays) {
       const total = input + output + cacheCreate + cacheRead;
       if (total === 0) continue;
       const capturedAt = new Date(`${date}T00:00:00Z`).toISOString();
+      const attribution = attributionForClaudeDaily(sessionAttribution, date, modelName);
       out.push({
         workspace_id: workspaceId,
         user_id: userId,
@@ -573,6 +860,8 @@ function collectClaudeViaCcusage(workspaceId, userId, lookbackDays) {
         capture_method: `anthropic.ccusage.cli.${CAPTURE_CONTEXT}`,
         aggregation_grain: 'daily',
         session_id: `daily-${date}-${modelName}`,
+        project_id: attribution?.id ?? null,
+        project_hint: attribution?.slug ?? null,
         input_tokens: input,
         output_tokens: output,
         cache_creation_tokens: cacheCreate,

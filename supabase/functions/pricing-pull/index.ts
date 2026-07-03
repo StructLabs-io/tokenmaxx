@@ -78,7 +78,8 @@ Deno.serve(async (_req: Request) => {
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const today = new Date().toISOString().slice(0, 10);
+    const runStartedAt = new Date().toISOString();
+    const today = runStartedAt.slice(0, 10);
 
     const pricing = await fetchOpenRouterPricing();
     const found = Object.keys(pricing).length;
@@ -100,10 +101,10 @@ Deno.serve(async (_req: Request) => {
         // Get last snapshot for this model
         const { data: lastRows } = await supabase
           .from('pricing_snapshots')
-          .select('id,input_per_m_usd,output_per_m_usd,effective_date')
+          .select('id,input_per_m_usd,output_per_m_usd,effective_date,effective_start_at,effective_end_at')
           .eq('provider', provider)
           .eq('model', model)
-          .order('effective_date', { ascending: false })
+          .order('effective_start_at', { ascending: false })
           .limit(1);
 
         const last = lastRows && lastRows.length > 0 ? lastRows[0] : null;
@@ -122,10 +123,22 @@ Deno.serve(async (_req: Request) => {
           provider,
           model,
           effective_date: today,
+          effective_start_at: runStartedAt,
+          effective_end_at: null,
           input_per_m_usd: current.inputPerM,
           output_per_m_usd: current.outputPerM,
           source: 'openrouter',
         };
+
+        if (last && !last.effective_end_at) {
+          const { error: closeError } = await supabase
+            .from('pricing_snapshots')
+            .update({ effective_end_at: runStartedAt })
+            .eq('id', last.id)
+            .throwOnError();
+
+          if (closeError) throw closeError;
+        }
 
         const { error } = await supabase
           .from('pricing_snapshots')

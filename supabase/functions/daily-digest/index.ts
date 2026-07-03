@@ -2,17 +2,10 @@
  * daily-digest -- TokenMaxx daily Telegram digest
  *
  * Message structure:
- *   ── Last 24 hours ──  (yesterday)
- *     per-workspace costs + total (USD + MYR)
- *     token count + log entries
+ *   ── Last 24 hours ──
  *   ── Last 7 days ──
- *     per-workspace costs + total (USD + MYR)
- *     avg/day, delta vs 30d avg
- *     top models (7d rolling)
- *     top projects (7d rolling)
  *   ── Last 30 days ──
- *     per-workspace costs + total (USD + MYR)
- *     reporting window
+ *     tokens, event count, MacBook, Server, total, avg/day, delta, window
  *   Quota windows (live observations)
  *   FX rate footer
  *
@@ -67,6 +60,21 @@ function buildBar(pct: number, width: number): string {
   return '[' + '█'.repeat(filled) + '░'.repeat(width - filled) + ']';
 }
 
+function blankBar(width: number): string {
+  return '[' + ' '.repeat(width) + ']';
+}
+
+function fmtSignedPct(n: number | null): string {
+  if (n === null || !Number.isFinite(n)) return 'n/a';
+  const sign = n >= 0 ? '+' : '';
+  return `${sign}${n.toFixed(1)}%`;
+}
+
+function percentDelta(current: number, previous: number): number | null {
+  if (!previous) return null;
+  return ((current - previous) / previous) * 100;
+}
+
 function classifyWorkspace(name: string): { icon: string; label: string } {
   const lower = name.toLowerCase();
   if (lower.includes('macbook') || lower.includes('mac')) return { icon: '💻', label: 'MacBook' };
@@ -85,6 +93,7 @@ type EventRow = {
   project_id: string | null;
   workspace_id: string | null;
   capture_method: string | null;
+  session_id: string | null;
 };
 
 /**
@@ -118,12 +127,20 @@ function perSourceCostLines(
 ): string[] {
   // Bucket by source (MacBook / Server / ...) derived from capture_method
   const bySource: Record<string, { icon: string; label: string; cost: number }> = {};
+  bySource.MacBook = { icon: '💻', label: 'MacBook', cost: 0 };
+  bySource.Server = { icon: '🖥', label: 'Server', cost: 0 };
   for (const e of events) {
     const { icon, label } = sourceFromCaptureMethod(e.capture_method);
     if (!bySource[label]) bySource[label] = { icon, label, cost: 0 };
     bySource[label].cost += parseFloat(String(e.cost_usd ?? 0));
   }
-  const entries = Object.values(bySource).sort((a, b) => b.cost - a.cost);
+  const preferred = ['MacBook', 'Server'];
+  const entries = [
+    ...preferred.map((label) => bySource[label]),
+    ...Object.values(bySource)
+      .filter((e) => !preferred.includes(e.label))
+      .sort((a, b) => b.cost - a.cost),
+  ];
 
   // Pad colons so $ amounts align: "MacBook: $X", "Server:  $X", "Total:   $X"
   const labels = [...entries.map((e) => e.label), 'Total'];
@@ -138,6 +155,54 @@ function perSourceCostLines(
   const myrStr = showMyr ? ` (MYR ${fmtMyr(total, myrRate)})` : '';
   lines.push(`💰 ${pad('Total')}$${fmtUsd(total)} USD${myrStr}`);
   return lines;
+}
+
+function periodLines(
+  title: string,
+  events: EventRow[],
+  previousEvents: EventRow[],
+  days: number,
+  startDate: string,
+  endDate: string,
+  myrRate: number,
+): string[] {
+  const cost = sumCost(events);
+  const previousCost = sumCost(previousEvents);
+  const avgPerDay = cost / days;
+  const delta = percentDelta(cost, previousCost);
+  const windowText = startDate === endDate ? endDate : `${startDate} – ${endDate}`;
+
+  return [
+    title,
+    `⚡ ${fmtTokens(sumTokens(events))} tokens | ${events.length.toLocaleString()} events`,
+    ...perSourceCostLines(events, myrRate, true),
+    `📈 Avg/day: $${fmtUsd(avgPerDay)} USD | Delta: ${fmtSignedPct(delta)}`,
+    `Reporting window: ${windowText}`,
+  ];
+}
+
+function quotaKind(label: string): 'claude' | 'codex' | 'unknown' {
+  const lower = label.toLowerCase();
+  if (lower.includes('claude')) return 'claude';
+  if (lower.includes('codex')) return 'codex';
+  return 'unknown';
+}
+
+function estimateTokensPerSession(events: EventRow[], label: string): number | null {
+  const kind = quotaKind(label);
+  if (kind === 'unknown') return null;
+
+  const matching = events.filter((event) => {
+    const provider = (event.provider ?? '').toLowerCase();
+    const capture = (event.capture_method ?? '').toLowerCase();
+    if (kind === 'claude') return provider === 'anthropic' || capture.startsWith('anthropic.');
+    return provider === 'openai-codex' || capture.startsWith('openai-codex.');
+  });
+  if (matching.length === 0) return null;
+
+  const sessionIds = new Set(matching.map((event) => event.session_id).filter(Boolean));
+  const divisor = sessionIds.size > 0 ? sessionIds.size : matching.length;
+  return Math.round(sumTokens(matching) / divisor);
 }
 
 // --- Main handler ---
@@ -169,8 +234,9 @@ Deno.serve(async (_req: Request) => {
 
     const sevenDayStart = addDaysUtc(dateStr, -6);
     const thirtyDayStart = addDaysUtc(dateStr, -29);
+    const sixtyDayStart = addDaysUtc(dateStr, -59);
 
-    // --- Fetch 30d of events (covers all 3 periods) ---
+    // --- Fetch 60d of events (covers current periods + previous-period deltas) ---
     // PostgREST caps at 1000 rows per request — paginate to get every row.
     const allEvents: EventRow[] = [];
     {
@@ -178,8 +244,8 @@ Deno.serve(async (_req: Request) => {
       for (let offset = 0; offset < 200_000; offset += PAGE) {
         const { data: page, error: pageErr } = await supabase
           .from('usage_events')
-          .select('date_utc, provider, model, total_tokens, cost_usd, project_id, workspace_id, capture_method')
-          .gte('date_utc', thirtyDayStart)
+          .select('date_utc, provider, model, total_tokens, cost_usd, project_id, workspace_id, capture_method, session_id')
+          .gte('date_utc', sixtyDayStart)
           .lte('date_utc', dateStr)
           .order('date_utc', { ascending: true })
           .range(offset, offset + PAGE - 1);
@@ -193,6 +259,16 @@ Deno.serve(async (_req: Request) => {
     // Partition into periods
     const events24h = allEvents.filter((e) => e.date_utc === dateStr);
     const events7d = allEvents.filter((e) => e.date_utc >= sevenDayStart && e.date_utc <= dateStr);
+    const events30d = allEvents.filter((e) => e.date_utc >= thirtyDayStart && e.date_utc <= dateStr);
+
+    const previous24hEnd = addDaysUtc(dateStr, -1);
+    const previous7dStart = addDaysUtc(sevenDayStart, -7);
+    const previous7dEnd = addDaysUtc(sevenDayStart, -1);
+    const previous30dStart = addDaysUtc(thirtyDayStart, -30);
+    const previous30dEnd = addDaysUtc(thirtyDayStart, -1);
+    const previous24hEvents = allEvents.filter((e) => e.date_utc === previous24hEnd);
+    const previous7dEvents = allEvents.filter((e) => e.date_utc >= previous7dStart && e.date_utc <= previous7dEnd);
+    const previous30dEvents = allEvents.filter((e) => e.date_utc >= previous30dStart && e.date_utc <= previous30dEnd);
 
     if (events24h.length === 0) {
       // Zero events for the target date is unexpected — Ben uses Claude/Codex daily
@@ -236,67 +312,13 @@ Deno.serve(async (_req: Request) => {
         ? parseFloat(fxRows[0].usd_to_myr)
         : MYR_FALLBACK;
 
-    // --- Workspace display names ---
-    const workspaceIds = [...new Set(allEvents.map((e) => e.workspace_id).filter(Boolean))] as string[];
-    const wsNames: Record<string, string> = {};
-    if (workspaceIds.length > 0) {
-      const { data: wsRows } = await supabase
-        .from('workspaces')
-        .select('id, display_name, slug')
-        .in('id', workspaceIds);
-      if (wsRows) {
-        for (const w of wsRows) wsNames[w.id] = w.display_name ?? w.slug ?? w.id;
-      }
-    }
-
     // --- Cost aggregates ---
     const daily24hCost = sumCost(events24h);
     const daily7dCost = sumCost(events7d);
-    const daily30dCost = sumCost(allEvents);
-    const sevenDayAvg = daily7dCost / 7;
-    const thirtyDayAvg = daily30dCost / 30;
-    const deltaPct = thirtyDayAvg > 0
-      ? ((sevenDayAvg - thirtyDayAvg) / thirtyDayAvg) * 100
-      : 0;
+    const daily30dCost = sumCost(events30d);
 
     // --- Token totals ---
     const tokens24h = sumTokens(events24h);
-
-    // --- Top models (7d) ---
-    type Stat = { tokens: number; cost: number };
-    const byModel7d: Record<string, Stat> = {};
-    for (const row of events7d) {
-      const key = row.model;
-      if (!byModel7d[key]) byModel7d[key] = { tokens: 0, cost: 0 };
-      byModel7d[key].tokens += row.total_tokens ?? 0;
-      byModel7d[key].cost += parseFloat(String(row.cost_usd ?? 0));
-    }
-    const sortedModels = Object.entries(byModel7d)
-      .sort((a, b) => b[1].tokens - a[1].tokens)
-      .slice(0, 10);
-
-    // --- Top projects (7d) ---
-    const projectIds7d = [...new Set(events7d.map((e) => e.project_id).filter(Boolean))] as string[];
-    const byProject7d: Record<string, Stat> = {};
-    for (const row of events7d) {
-      if (!row.project_id) continue;
-      if (!byProject7d[row.project_id]) byProject7d[row.project_id] = { tokens: 0, cost: 0 };
-      byProject7d[row.project_id].tokens += row.total_tokens ?? 0;
-      byProject7d[row.project_id].cost += parseFloat(String(row.cost_usd ?? 0));
-    }
-    const projectNames: Record<string, string> = {};
-    if (projectIds7d.length > 0) {
-      const { data: projRows } = await supabase
-        .from('projects')
-        .select('id, display_name, slug')
-        .in('id', projectIds7d);
-      if (projRows) {
-        for (const p of projRows) projectNames[p.id] = p.display_name ?? p.slug ?? p.id;
-      }
-    }
-    const sortedProjects = Object.entries(byProject7d)
-      .sort((a, b) => b[1].tokens - a[1].tokens)
-      .slice(0, 5);
 
     // --- Quota windows ---
     const { data: qWindows } = await supabase
@@ -305,64 +327,54 @@ Deno.serve(async (_req: Request) => {
       .eq('active', true)
       .order('id');
 
-    type QuotaObs = { percent_used: number | null; observed_at: string };
+    type QuotaObs = {
+      percent_used: number | null;
+      percent_remaining: number | null;
+      absolute_tokens_cap: number | null;
+      observed_at: string;
+    };
     const quotaLines: string[] = [];
     if (qWindows && qWindows.length > 0) {
       for (const win of qWindows) {
         const { data: obsRows } = await supabase
           .from('quota_observations')
-          .select('percent_used, observed_at')
+          .select('percent_used, percent_remaining, absolute_tokens_cap, observed_at')
           .eq('quota_window_id', win.id)
           .order('observed_at', { ascending: false })
           .limit(1);
         const obs = obsRows && obsRows.length > 0 ? (obsRows[0] as QuotaObs) : null;
-        const pct = obs?.percent_used ?? null;
-        if (pct !== null) {
-          const bar = buildBar(pct, 10);
-          const icon = pct >= 80 ? '🔴' : pct >= 60 ? '🟡' : '🟢';
-          quotaLines.push(`${icon} <b>${win.window_label}</b>: ${pct}% used  ${bar}`);
+        const remaining = obs?.percent_remaining ?? (
+          obs?.percent_used !== null && obs?.percent_used !== undefined
+            ? 100 - obs.percent_used
+            : null
+        );
+        const avgTokens = estimateTokensPerSession(events7d, win.window_label);
+        const avgText = avgTokens !== null ? fmtTokens(avgTokens) : 'n/a';
+        if (remaining !== null) {
+          const icon = remaining <= 20 ? '🔴' : remaining <= 40 ? '🟡' : '🟢';
+          const capText = obs?.absolute_tokens_cap ? ` | cap: ${fmtTokens(obs.absolute_tokens_cap)}` : '';
+          quotaLines.push(
+            `${icon} <b>${win.window_label}</b>: ${Number(remaining).toFixed(0)}% remaining ` +
+            `<code>${blankBar(10)}</code>`,
+          );
+          quotaLines.push(`   est. tokens/session: ${avgText}${capText}`);
         } else {
-          quotaLines.push(`⚪ <b>${win.window_label}</b>: no observation`);
+          quotaLines.push(`⚪ <b>${win.window_label}</b>: no observation <code>${blankBar(10)}</code>`);
+          quotaLines.push(`   est. tokens/session: ${avgText}`);
         }
       }
     }
 
     // --- Build message ---
-    const deltaSign = deltaPct >= 0 ? '+' : '';
-
     const lines: string[] = [
       `📊 <b>TokenMaxx — ${fmtDate(dateStr)}</b>`,
       '',
-      '── Last 24 hours ──',
-      `⚡ ${fmtTokens(tokens24h)} tokens | ${events24h.length.toLocaleString()} events`,
-      ...perSourceCostLines(events24h, myrRate, true),
+      ...periodLines('── Last 24 hours ──', events24h, previous24hEvents, 1, dateStr, dateStr, myrRate),
       '',
-      '── Last 7 days ──',
-      ...perSourceCostLines(events7d, myrRate, true),
-      `📈 Avg/day: $${fmtUsd(sevenDayAvg)} USD | Delta vs 30d: ${deltaSign}${deltaPct.toFixed(1)}%`,
+      ...periodLines('── Last 7 days ──', events7d, previous7dEvents, 7, sevenDayStart, dateStr, myrRate),
+      '',
+      ...periodLines('── Last 30 days ──', events30d, previous30dEvents, 30, thirtyDayStart, dateStr, myrRate),
     ];
-
-    if (sortedModels.length > 0) {
-      lines.push('');
-      lines.push('Top models (7d):');
-      for (const [model, stat] of sortedModels) {
-        lines.push(`  • <code>${model}</code>: ${fmtTokens(stat.tokens)} tkns ($${fmtUsd(stat.cost)})`);
-      }
-    }
-
-    if (sortedProjects.length > 0) {
-      lines.push('');
-      lines.push('Top projects (7d):');
-      for (const [pid, stat] of sortedProjects) {
-        const name = projectNames[pid] ?? pid.slice(0, 12);
-        lines.push(`  • <code>${name}</code>: ${fmtTokens(stat.tokens)} tkns ($${fmtUsd(stat.cost)})`);
-      }
-    }
-
-    lines.push('');
-    lines.push('── Last 30 days ──');
-    lines.push(...perSourceCostLines(allEvents, myrRate, true));
-    lines.push(`Reporting window: ${thirtyDayStart} – ${dateStr}`);
 
     if (quotaLines.length > 0) {
       lines.push('');
@@ -389,8 +401,6 @@ Deno.serve(async (_req: Request) => {
         cost24hUsd: daily24hCost,
         cost7dUsd: daily7dCost,
         cost30dUsd: daily30dCost,
-        sevenDayAvgUsd: sevenDayAvg,
-        deltaPct,
         sentText: lines.join('\n'),
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }

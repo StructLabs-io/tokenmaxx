@@ -110,10 +110,10 @@ async function fetchOpenRouterPricing() {
 // --- Supabase: last snapshot for a (provider, model) ---
 
 async function getLastSnapshot(provider, model) {
-  const query = `pricing_snapshots?select=id,input_per_m_usd,output_per_m_usd,effective_date` +
+  const query = `pricing_snapshots?select=id,input_per_m_usd,output_per_m_usd,effective_date,effective_start_at,effective_end_at` +
     `&provider=eq.${encodeURIComponent(provider)}` +
     `&model=eq.${encodeURIComponent(model)}` +
-    `&order=effective_date.desc&limit=1`;
+    `&order=effective_start_at.desc&limit=1`;
   const rows = await supabaseRequest(query);
   return (rows && rows.length > 0) ? rows[0] : null;
 }
@@ -121,17 +121,27 @@ async function getLastSnapshot(provider, model) {
 // --- Insert snapshot ---
 
 async function insertSnapshot(row) {
-  // ON CONFLICT (provider, model, effective_date) DO NOTHING
+  // ON CONFLICT DO NOTHING keeps reruns at the same detection instant harmless.
   return supabaseRequest('pricing_snapshots', 'POST', row, {
     Prefer: 'resolution=ignore-duplicates,return=representation',
   });
+}
+
+async function closeSnapshot(id, effectiveEndAt) {
+  return supabaseRequest(
+    `pricing_snapshots?id=eq.${encodeURIComponent(id)}`,
+    'PATCH',
+    { effective_end_at: effectiveEndAt },
+    { Prefer: 'return=minimal' },
+  );
 }
 
 // --- Process one model ---
 
 async function processModel(orId, current, dryRun) {
   const { provider, model } = orIdToInternal(orId);
-  const today = new Date().toISOString().slice(0, 10);
+  const effectiveStartAt = new Date().toISOString();
+  const effectiveDate = effectiveStartAt.slice(0, 10);
 
   const last = await getLastSnapshot(provider, model);
 
@@ -159,11 +169,16 @@ async function processModel(orId, current, dryRun) {
   const row = {
     provider,
     model,
-    effective_date: today,
+    effective_date: effectiveDate,
+    effective_start_at: effectiveStartAt,
+    effective_end_at: null,
     input_per_m_usd: current.inputPerM,
     output_per_m_usd: current.outputPerM,
     source: 'openrouter',
   };
+  if (last && !last.effective_end_at) {
+    await closeSnapshot(last.id, effectiveStartAt);
+  }
   await insertSnapshot(row);
   const action = last ? 'CHANGE recorded' : 'initial snapshot recorded';
   console.log(`  ${orId} (${provider}/${model}): ${action} ($${current.inputPerM}/$${current.outputPerM})`);

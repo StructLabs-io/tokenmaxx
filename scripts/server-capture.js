@@ -104,32 +104,70 @@ async function getWorkspaceId(idOrSlug) {
 
 async function batchInsertEvents(rows, dryRun) {
   if (rows.length === 0) return { inserted: 0, failed: 0 };
+  const deduped = deduplicateRows(rows);
+  if (deduped.length < rows.length) {
+    console.log(`    Deduped ${rows.length - deduped.length} duplicate rows before upsert`);
+  }
+
   if (dryRun) {
-    for (const row of rows) {
+    for (const row of deduped) {
       console.log(`    [dry-run] ${row.provider}/${row.model} ${row.date_utc} in:${row.input_tokens} out:${row.output_tokens}`);
     }
-    return { inserted: rows.length, failed: 0 };
+    return { inserted: deduped.length, failed: 0 };
   }
-  const BATCH = 100;
+  const BATCH = parseInt(process.env.TOKENMAXX_UPSERT_BATCH_SIZE || '25', 10);
   let inserted = 0, failed = 0;
-  for (let i = 0; i < rows.length; i += BATCH) {
-    const chunk = rows.slice(i, i + BATCH);
-    try {
-      // on_conflict targets the unique constraint columns so PostgREST
-      // upserts rather than rejecting with 409.
-      await supabaseRequest(
-        'usage_events?on_conflict=user_id,capture_method,session_id,model,date_utc',
-        'POST', chunk, {
-          Prefer: 'resolution=merge-duplicates,return=minimal',
-        },
-      );
-      inserted += chunk.length;
-    } catch (err) {
-      console.error(`    FAIL batch (${chunk.length} rows): ${err.message}`);
-      failed += chunk.length;
+  // Do not send null project_id/project_hint for rows we cannot label.
+  // Rolling-window recapture would otherwise wipe manual/AI attribution on
+  // conflict. Labelled rows still update labels; unlabelled rows preserve
+  // whatever attribution already exists in Supabase.
+  const labelled = [];
+  const unlabelled = [];
+  for (const row of deduped) {
+    if (row.project_id || row.project_hint) labelled.push(row);
+    else {
+      const copy = { ...row };
+      delete copy.project_id;
+      delete copy.project_hint;
+      unlabelled.push(copy);
+    }
+  }
+
+  for (const group of [labelled, unlabelled]) {
+    for (let i = 0; i < group.length; i += BATCH) {
+      const chunk = group.slice(i, i + BATCH);
+      try {
+        // on_conflict targets the unique constraint columns so PostgREST
+        // upserts rather than rejecting with 409.
+        await supabaseRequest(
+          'usage_events?on_conflict=user_id,capture_method,session_id,model,date_utc',
+          'POST', chunk, {
+            Prefer: 'resolution=merge-duplicates,return=minimal',
+          },
+        );
+        inserted += chunk.length;
+      } catch (err) {
+        console.error(`    FAIL batch (${chunk.length} rows): ${err.message}`);
+        failed += chunk.length;
+      }
     }
   }
   return { inserted, failed };
+}
+
+function deduplicateRows(rows) {
+  const seen = new Map();
+  for (const row of rows) {
+    const key = [
+      row.user_id,
+      row.capture_method,
+      row.session_id,
+      row.model,
+      row.date_utc,
+    ].join('\x00');
+    seen.set(key, row);
+  }
+  return [...seen.values()];
 }
 
 // --- Token extraction helpers ---
@@ -158,6 +196,11 @@ function cacheReadTokens(usage) {
   );
 }
 
+function uncachedInputTokens(usage) {
+  const input = usage.input_tokens || usage.prompt_tokens || 0;
+  return Math.max(0, input - cacheReadTokens(usage));
+}
+
 function hasUsageTokens(usage) {
   return Boolean(usage && typeof usage === 'object' && (
     Number.isFinite(usage.input_tokens) || Number.isFinite(usage.output_tokens) ||
@@ -166,17 +209,28 @@ function hasUsageTokens(usage) {
   ));
 }
 
-function collectUsageObjects(obj, out = []) {
-  if (!obj || typeof obj !== 'object') return out;
-  if (hasUsageTokens(obj.usage)) out.push(obj.usage);
-  if (obj.info && typeof obj.info === 'object' && hasUsageTokens(obj.info.last_token_usage)) {
-    out.push(obj.info.last_token_usage);
-  }
-  for (const value of Object.values(obj)) {
-    if (value && typeof value === 'object' && value !== obj.usage && value !== obj.info) {
-      collectUsageObjects(value, out);
+function collectUsageObjects(obj) {
+  const out = [];
+  const seen = new WeakSet();
+  const stack = [obj];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || typeof current !== 'object' || seen.has(current)) continue;
+    seen.add(current);
+
+    if (hasUsageTokens(current.usage)) out.push(current.usage);
+    if (current.info && typeof current.info === 'object' && hasUsageTokens(current.info.last_token_usage)) {
+      out.push(current.info.last_token_usage);
+    }
+
+    for (const value of Object.values(current)) {
+      if (value && typeof value === 'object' && value !== current.usage && value !== current.info) {
+        stack.push(value);
+      }
     }
   }
+
   return out;
 }
 
@@ -252,23 +306,45 @@ function buildCronUsageRow(event, workspaceId, userId) {
 function listJsonlFiles(rootDir) {
   const files = [];
   if (!fs.existsSync(rootDir)) return files;
-  for (const entry of fs.readdirSync(rootDir, { withFileTypes: true })) {
-    const p = path.join(rootDir, entry.name);
-    if (entry.isDirectory()) files.push(...listJsonlFiles(p));
-    else if (entry.isFile() && entry.name.startsWith('rollout-') && entry.name.endsWith('.jsonl')) {
-      files.push(p);
+
+  const stack = [rootDir];
+  while (stack.length > 0) {
+    const dir = stack.pop();
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch (_) {
+      continue;
+    }
+
+    for (const entry of entries) {
+      const p = path.join(dir, entry.name);
+      if (entry.isDirectory()) stack.push(p);
+      else if (entry.isFile() && entry.name.startsWith('rollout-') && entry.name.endsWith('.jsonl')) {
+        files.push(p);
+      }
     }
   }
+
   return files;
 }
 
 function parseCodexSession(fpath) {
   const lines = fs.readFileSync(fpath, 'utf8').split('\n');
   const meta = {};
-  let inputTokens = 0, outputTokens = 0, cachedTokens = 0;
+  const usageByModel = new Map();
   let usageEvents = 0, lastTotalUsage = null;
   let model = 'gpt-5.3-codex';
   let firstUserPrompt = null;
+
+  function addUsage(modelName, usage) {
+    const key = modelName || model;
+    const current = usageByModel.get(key) || { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
+    current.inputTokens += uncachedInputTokens(usage);
+    current.outputTokens += usage.output_tokens || usage.completion_tokens || 0;
+    current.cachedTokens += cacheReadTokens(usage);
+    usageByModel.set(key, current);
+  }
 
   for (const line of lines) {
     if (!line.trim()) continue;
@@ -294,24 +370,23 @@ function parseCodexSession(fpath) {
       }
       if (event.model) model = event.model;
       if (event.payload && event.payload.model) model = event.payload.model;
+      const eventModel = event.model || (event.payload && event.payload.model) || model;
       if (event.info && hasUsageTokens(event.info.total_token_usage)) {
         lastTotalUsage = event.info.total_token_usage;
       }
       for (const usage of collectUsageObjects(event)) {
-        inputTokens += usage.input_tokens || usage.prompt_tokens || 0;
-        outputTokens += usage.output_tokens || usage.completion_tokens || 0;
-        cachedTokens += cacheReadTokens(usage);
+        addUsage(eventModel, usage);
         usageEvents++;
       }
     } catch (_) {}
   }
 
   if (lastTotalUsage) {
-    inputTokens = lastTotalUsage.input_tokens || lastTotalUsage.prompt_tokens || 0;
-    outputTokens = lastTotalUsage.output_tokens || lastTotalUsage.completion_tokens || 0;
-    cachedTokens = cacheReadTokens(lastTotalUsage);
+    usageByModel.clear();
+    addUsage(model, lastTotalUsage);
   }
-  if (usageEvents === 0 || (inputTokens + outputTokens) === 0) return null;
+  const totals = [...usageByModel.values()];
+  if (usageEvents === 0 || totals.every((t) => (t.inputTokens + t.outputTokens) === 0)) return null;
 
   const ts = meta.timestamp
     ? new Date(meta.timestamp).toISOString()
@@ -327,16 +402,17 @@ function parseCodexSession(fpath) {
     if (!title) title = null;
   }
 
-  return {
+  return [...usageByModel.entries()].map(([modelName, usage]) => ({
     ts,
-    model,
-    inputTokens,
-    outputTokens,
-    cachedTokens,
-    sessionId: meta.id || null,
+    model: modelName,
+    inputTokens: usage.inputTokens,
+    outputTokens: usage.outputTokens,
+    cachedTokens: usage.cachedTokens,
+    sessionId: meta.id || path.basename(fpath, '.jsonl'),
+    sourcePath: fpath,
     cwd: meta.cwd || null,
     title,
-  };
+  }));
 }
 
 // cwd -> project_id map. Server paths (/home/openclaw/...) are first; Mac
@@ -374,27 +450,30 @@ async function processCodexSessions(workspaceId, userId, dryRun) {
 
   const rows = [];
   for (const { fpath } of allFiles) {
-    const session = parseCodexSession(fpath);
-    if (!session) continue;
-    rows.push({
-      workspace_id: workspaceId,
-      user_id: userId,
-      captured_at: session.ts,
-      date_utc: session.ts.slice(0, 10),
-      date_local: localDateInTz(session.ts, SERVER_TIMEZONE),
-      provider: 'openai-codex',
-      model: session.model,
-      capture_method: `openai-codex.ccusage.cli.${CAPTURE_CONTEXT}`,
-      aggregation_grain: 'session',
-      session_id: session.sessionId,
-      session_title: session.title,
-      project_id: projectIdForCwd(session.cwd),
-      input_tokens: session.inputTokens,
-      output_tokens: session.outputTokens,
-      cache_creation_tokens: 0,
-      cache_read_tokens: session.cachedTokens,
-      token_share_pct: 100.0,
-    });
+    const sessions = parseCodexSession(fpath);
+    if (!sessions) continue;
+    for (const session of sessions) {
+      rows.push({
+        workspace_id: workspaceId,
+        user_id: userId,
+        captured_at: session.ts,
+        date_utc: session.ts.slice(0, 10),
+        date_local: localDateInTz(session.ts, SERVER_TIMEZONE),
+        provider: 'openai-codex',
+        model: session.model,
+        capture_method: `openai-codex.ccusage.cli.${CAPTURE_CONTEXT}`,
+        aggregation_grain: 'session',
+        session_id: session.sessionId,
+        source_path: session.sourcePath,
+        session_title: session.title,
+        project_id: projectIdForCwd(session.cwd),
+        input_tokens: session.inputTokens,
+        output_tokens: session.outputTokens,
+        cache_creation_tokens: 0,
+        cache_read_tokens: session.cachedTokens,
+        token_share_pct: 100.0,
+      });
+    }
   }
 
   return batchInsertEvents(rows, dryRun);
@@ -404,6 +483,10 @@ async function processCodexSessions(workspaceId, userId, dryRun) {
  * Pull last N days of Claude Code usage via ccusage and produce one row per
  * (date, model). Synthetic session_id keeps the unique constraint deterministic.
  */
+function isClaudeModel(modelName) {
+  return /^claude\b/i.test(modelName);
+}
+
 function collectClaudeViaCcusage(workspaceId, userId, lookbackDays) {
   const since = new Date();
   since.setUTCDate(since.getUTCDate() - lookbackDays);
@@ -436,7 +519,7 @@ function collectClaudeViaCcusage(workspaceId, userId, lookbackDays) {
     if (!date) continue;
     for (const m of day.modelBreakdowns ?? []) {
       const modelName = m.modelName;
-      if (!modelName || modelName === '<synthetic>') continue;
+      if (!modelName || modelName === '<synthetic>' || !isClaudeModel(modelName)) continue;
       const input = m.inputTokens ?? 0;
       const output = m.outputTokens ?? 0;
       const cacheCreate = m.cacheCreationTokens ?? 0;
