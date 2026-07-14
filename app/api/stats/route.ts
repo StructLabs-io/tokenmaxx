@@ -12,21 +12,31 @@
 
 import { NextRequest } from "next/server";
 import { getSupabaseServerClient, isServiceRoleConfigured } from "@/lib/supabase/client";
+import { isDemoMode } from "@/lib/data";
 import type { DashboardStats, DailyTotal, ProjectTotals } from "@/lib/supabase/types";
 
 const DEFAULT_DAYS = 14;
 const MAX_DAYS = 90;
 
 export async function GET(req: NextRequest) {
-  if (!isServiceRoleConfigured()) {
-    return Response.json({ error: "Supabase not configured" }, { status: 503 });
-  }
-
   const { searchParams } = new URL(req.url);
   const days = Math.min(
     parseInt(searchParams.get("days") ?? String(DEFAULT_DAYS), 10) || DEFAULT_DAYS,
     MAX_DAYS
   );
+
+  // The public deployment runs in demo mode. Never let its service-role
+  // configuration turn this legacy route into a real-data leak.
+  if (isDemoMode()) {
+    const { demoDashboardStats } = await import("@/demo/demo-mode-flag");
+    return Response.json(demoDashboardStats(days), {
+      headers: { "Cache-Control": "no-store" },
+    });
+  }
+
+  if (!isServiceRoleConfigured()) {
+    return Response.json({ error: "Supabase not configured" }, { status: 503 });
+  }
 
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - days);
