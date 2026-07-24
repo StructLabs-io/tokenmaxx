@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# n9c-git-sync v1 — canonical pre-commit auto-sync.
+# Source of truth: n9c-repo/shared/config/git-hooks/pre-commit-sync
+# Installed fleet-wide by shared/scripts/install-git-sync-hooks.sh.
+#
+# Pulls the remote default branch before a commit made ON that branch, so
+# concurrent agent sessions don't race each other into push rejections.
+# Safe by construction:
+#   - fires only on the repo's default branch (feature/worktree branches skip)
+#   - fail-open on network problems (never blocks a commit because wifi died)
+#   - stash discipline per multi-session policy: tagged `stash push -u`,
+#     restore with `stash apply --index <sha>`, drop by sha — NEVER a bare
+#     `git stash pop` (the stash stack is shared across sessions/worktrees)
+#   - no GNU `timeout` dependency (absent on stock macOS — the historical
+#     hooks silently no-oped because of this); perl alarm wrapper instead
+set -uo pipefail
+
+PREFIX="[n9c-sync]"
+
+run_to() { # run_to <seconds> <cmd...> — portable timeout via perl alarm
+  perl -e 'my $t = shift @ARGV; alarm $t; exec @ARGV or exit 127' "$@" 2>/dev/null
+}
+
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
+git remote get-url origin >/dev/null 2>&1 || exit 0
+
+BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
+DEFAULT_BRANCH="$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')"
+if [[ -z "$DEFAULT_BRANCH" ]]; then
+  for b in main master; do
+    if git show-ref --verify --quiet "refs/remotes/origin/$b"; then
+      DEFAULT_BRANCH="$b"
+      break
+    fi
+  done
+fi
+[[ -z "$DEFAULT_BRANCH" || "$BRANCH" != "$DEFAULT_BRANCH" ]] && exit 0
+
+LOCAL_HEAD="$(git rev-parse HEAD 2>/dev/null || echo "")"
+REMOTE_HEAD="$(run_to 8 git ls-remote origin "refs/heads/$DEFAULT_BRANCH" | cut -f1)"
+[[ -z "$REMOTE_HEAD" || -z "$LOCAL_HEAD" || "$REMOTE_HEAD" == "$LOCAL_HEAD" ]] && exit 0
+# Local already contains the remote head (we're ahead) — nothing to sync.
+git merge-base --is-ancestor "$REMOTE_HEAD" "$LOCAL_HEAD" 2>/dev/null && exit 0
+
+echo "$PREFIX origin/$DEFAULT_BRANCH has new commits — syncing before commit..."
+
+STASH_TAG="n9c-sync-$$-$(date +%s)"
+git stash push -u -m "$STASH_TAG" -q 2>/dev/null || true
+STASH_SHA="$(git stash list --format='%H %gs' 2>/dev/null | awk -v t="$STASH_TAG" 'index($0,t){print $1; exit}')"
+
+drop_our_stash() {
+  [[ -z "$STASH_SHA" ]] && return 0
+  local ref
+  ref="$(git stash list --format='%gd %H' 2>/dev/null | awk -v s="$STASH_SHA" '$2==s{print $1; exit}')"
+  [[ -n "$ref" ]] && git stash drop -q "$ref" 2>/dev/null || true
+}
+
+restore_stash() {
+  [[ -z "$STASH_SHA" ]] && return 0
+  if git stash apply --index -q "$STASH_SHA" 2>/dev/null; then
+    drop_our_stash
+    echo "$PREFIX Restored changes (index intact)."
+    return 0
+  fi
+  if git stash apply -q "$STASH_SHA" 2>/dev/null; then
+    drop_our_stash
+    echo "$PREFIX Restored changes, but the staged set may have shifted."
+    echo "$PREFIX Re-stage (git add) and run the commit again."
+    return 1
+  fi
+  echo "$PREFIX ERROR: could not restore your stashed work automatically."
+  echo "$PREFIX It is SAFE in stash sha $STASH_SHA (tag: $STASH_TAG)."
+  echo "$PREFIX Recover: git stash apply --index $STASH_SHA   then drop that entry."
+  return 1
+}
+
+if run_to 30 git pull --ff-only origin "$DEFAULT_BRANCH" -q; then
+  echo "$PREFIX Pulled (fast-forward)."
+elif run_to 60 git pull --rebase origin "$DEFAULT_BRANCH" -q; then
+  echo "$PREFIX Pulled (rebase)."
+else
+  git rebase --abort 2>/dev/null || true
+  echo "$PREFIX WARN: pull failed (network or divergence) — committing on local state."
+fi
+
+restore_stash || exit 1
+exit 0
