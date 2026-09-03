@@ -48,8 +48,3 @@ supabase/.temp/
 
 # OpenNext build output
 .open-next/
-
-# Deno lockfile — byproduct of the Supabase Edge Functions (Deno) runtime resolving
-# supabase/functions/ imports. No deno.json in this repo; Next.js/npm (package-lock.json)
-# is the actual managed dependency set, so this isn't tracked.
-deno.lock
