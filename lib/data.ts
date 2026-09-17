@@ -12,6 +12,13 @@
  */
 
 import { isServiceRoleConfigured, getSupabaseServerClient } from "@/lib/supabase/client";
+import {
+  paceRunway,
+  resolveCostFromRaw,
+  resolveNextResetAt,
+  resolvePeriodStart,
+  type PaceResult,
+} from "./quota-pace";
 import type { DashboardStats, DailyTotal, ProjectTotals, UsageEvent, Project, ModelBreakdownRow, SubscriptionSummary, QuotaWindowWithUsage, UserSummaryRow, WrapStats, UnattributedGroup } from "@/lib/supabase/types";
 import {
   SEED_USAGE_EVENTS,
@@ -828,6 +835,103 @@ export interface QuotaWindowDetail extends QuotaWindowWithUsage {
   fillPct: number | null;
   /** ISO timestamp of latest quota observation (for staleness detection) */
   latest_observed_at: string | null;
+  /** Exact ISO reset timestamp when supplied by the source */
+  next_reset_at: string | null;
+  period_start?: string | null;
+  cost_used_usd: number | null;
+  cost_cap_usd: number | null;
+  /** Read-time 1D/7D/30D (or 1h/5h) runway vs reset */
+  pace: PaceResult | null;
+}
+
+type ObservationHistoryRow = {
+  quota_window_id: number;
+  observed_at: string;
+  percent_used: number | null;
+  raw: unknown;
+};
+
+function asRaw(value: unknown): Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+async function getQuotaObservationHistory(
+  supabase: ReturnType<typeof getSupabaseServerClient>,
+  windowIds: number[],
+): Promise<Map<number, ObservationHistoryRow[]>> {
+  const history = new Map<number, ObservationHistoryRow[]>();
+  if (windowIds.length === 0) return history;
+  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const rows = await fetchAll<ObservationHistoryRow>((from, to) =>
+    supabase
+      .from("quota_observations")
+      .select("quota_window_id,observed_at,percent_used,raw")
+      .in("quota_window_id", windowIds)
+      .gte("observed_at", cutoff)
+      .order("observed_at", { ascending: true })
+      .range(from, to) as unknown as Promise<{ data: ObservationHistoryRow[] | null; error: unknown }>,
+  );
+  for (const row of rows) {
+    const list = history.get(row.quota_window_id) ?? [];
+    list.push(row);
+    history.set(row.quota_window_id, list);
+  }
+  return history;
+}
+
+function decorateQuotaWindow(
+  window: QuotaWindowDetail,
+  history: ObservationHistoryRow[] | undefined,
+): QuotaWindowDetail {
+  const rows = history ?? [];
+  const latestHistory = rows.length > 0 ? rows[rows.length - 1] : undefined;
+  const raw = asRaw(latestHistory?.raw);
+  const nextResetAt = resolveNextResetAt(raw, window.window_type);
+  const costFromRaw = resolveCostFromRaw(raw);
+  const observations = rows
+    .filter((row): row is ObservationHistoryRow & { percent_used: number } =>
+      typeof row.percent_used === "number" && Number.isFinite(row.percent_used),
+    )
+    .map((row) => ({ observed_at: row.observed_at, percent_used: row.percent_used }));
+  if (observations.length === 0 && window.fillPct != null && window.latest_observed_at) {
+    observations.push({
+      observed_at: window.latest_observed_at,
+      percent_used: window.fillPct * 100,
+    });
+  }
+  window.next_reset_at = nextResetAt;
+  window.period_start = resolvePeriodStart(raw) ?? window.period_start ?? null;
+  window.cost_used_usd = costFromRaw.costUsedUsd;
+  window.cost_cap_usd = costFromRaw.costCapUsd;
+  window.pace = paceRunway({
+    observations,
+    windowType: window.window_type,
+    windowHours: window.window_hours,
+    nextResetAt,
+  });
+  if (nextResetAt) {
+    const ms = Date.parse(nextResetAt) - Date.now();
+    window.ms_until_reset = Number.isFinite(ms) ? Math.max(0, ms) : window.ms_until_reset;
+  }
+  if (window.fillPct == null && latestHistory?.percent_used != null) {
+    window.fillPct = latestHistory.percent_used / 100;
+    window.latest_observed_at = latestHistory.observed_at;
+  }
+  return window;
+}
+
+async function attachPaceAndResetClocks(
+  supabase: ReturnType<typeof getSupabaseServerClient>,
+  windows: QuotaWindowDetail[],
+): Promise<QuotaWindowDetail[]> {
+  if (windows.length === 0) return windows;
+  const history = await getQuotaObservationHistory(supabase, windows.map((window) => window.id));
+  for (const window of windows) {
+    decorateQuotaWindow(window, history.get(window.id));
+  }
+  return windows;
 }
 
 export async function getQuotaWindowDetails(): Promise<{
@@ -836,7 +940,7 @@ export async function getQuotaWindowDetails(): Promise<{
 }> {
   if (isDemoMode()) {
     const { demoQuotaWindowDetails } = await import("../demo/demo-mode-flag");
-    return { windows: demoQuotaWindowDetails() as QuotaWindowDetail[], usingSeedData: true };
+    return { windows: demoQuotaWindowDetails() as unknown as QuotaWindowDetail[], usingSeedData: true };
   }
   if (!isServiceRoleConfigured()) {
     return { windows: [], usingSeedData: false };
@@ -847,7 +951,15 @@ export async function getQuotaWindowDetails(): Promise<{
     // P2: try the single-RPC path first; falls back if function not deployed
     const { data: rpcData, error: rpcErr } = await (supabase as any).rpc("fn_quota_window_details");
     if (!rpcErr && Array.isArray(rpcData)) {
-      return { windows: rpcData as QuotaWindowDetail[], usingSeedData: false };
+      const windows = (rpcData as unknown as QuotaWindowDetail[]).map((row) => ({
+        ...row,
+        next_reset_at: row.next_reset_at ?? null,
+        cost_used_usd: row.cost_used_usd ?? null,
+        cost_cap_usd: row.cost_cap_usd ?? null,
+        pace: row.pace ?? null,
+      }));
+      await attachPaceAndResetClocks(supabase, windows);
+      return { windows, usingSeedData: false };
     }
     if (rpcErr) console.error("[fn_quota_window_details] falling back:", rpcErr);
 
@@ -881,8 +993,6 @@ export async function getQuotaWindowDetails(): Promise<{
     const usingSeedData = false;
     if (!subscriptions.length) return { windows: [], usingSeedData };
 
-    const now = Date.now();
-
     const windows: QuotaWindowDetail[] = subscriptions.flatMap((sub) =>
       sub.windows.map((w) => {
         let ms_until_reset: number | null = null;
@@ -897,6 +1007,10 @@ export async function getQuotaWindowDetails(): Promise<{
           ms_until_reset,
           fillPct: null,
           latest_observed_at: null,
+          next_reset_at: null,
+          cost_used_usd: null,
+          cost_cap_usd: null,
+          pace: null,
         };
       })
     );
@@ -929,6 +1043,8 @@ export async function getQuotaWindowDetails(): Promise<{
         }
       }
     }
+
+    await attachPaceAndResetClocks(supabase, windows);
 
     return { windows, usingSeedData };
   } catch (err) {

@@ -74,6 +74,7 @@ export default async function DashboardPage() {
           provider: qw.provider,
           fillPct: qw.fillPct ?? null,
           latest_observed_at: qw.latest_observed_at ?? null,
+          pace: qw.pace ?? null,
         }))}
       />
 

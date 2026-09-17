@@ -6,6 +6,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased] — 2026-09-17
+
+### Added
+
+- Quota pacing runway on the dashboard MiniWindow and `/quota`: 1D/7D/30D (or 1h/5h) burn vs vendor reset, with warning / critical / super-critical when the pool empties before reset
+- Normalized reset clocks on the quota read path (`resets_at`, Codex `rate_limit.*.reset_at`, Cursor `nextResetAt` / `billingCycleEnd`) so weekly and 5-hour windows use a real countdown instead of window length
+
+---
+
 ## [1.0.0] — 2026-05-30
 
 Approved by Human, 2026-05-30.

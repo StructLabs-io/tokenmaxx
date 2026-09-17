@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { formatPaceLine, paceToneClass, type PaceResult } from "@/lib/quota-pace";
 
 type Provider = "anthropic" | "openai-codex";
 
@@ -16,6 +17,7 @@ type Window = {
   provider: Provider | string;
   fillPct: number | null;
   latest_observed_at: string | null;
+  pace?: PaceResult | null;
 };
 
 interface Props {
@@ -58,6 +60,11 @@ function MiniWindow({ w, mode }: { w: Window; mode: "used" | "remaining" }) {
           />
         )}
       </div>
+      {w.pace ? (
+        <p className={cn("text-[11px] tabular-nums", paceToneClass(w.pace.tone))}>
+          {formatPaceLine(w.pace)}
+        </p>
+      ) : null}
     </div>
   );
 }

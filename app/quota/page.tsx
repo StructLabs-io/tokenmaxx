@@ -7,7 +7,14 @@
  */
 
 import { getQuotaWindowDetails, isDemoMode } from "@/lib/data";
-import { formatTokens, formatTokensExact } from "@/lib/utils";
+import { formatCost, formatTokens, formatTokensExact } from "@/lib/utils";
+import {
+  formatLeftoverLine,
+  formatLookbackLine,
+  formatResetLabel,
+  paceToneClass,
+  paceToneLabel,
+} from "@/lib/quota-pace";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { WindowCard } from "@/components/quota/window-card";
@@ -37,6 +44,33 @@ function providerLabel(provider: string): string {
   if (provider === "anthropic") return "Anthropic";
   if (provider === "openai-codex") return "OpenAI Codex";
   return provider;
+}
+
+function dollarCapLabel(detail: QuotaWindowDetail): string | null {
+  if (detail.cost_cap_usd == null) return null;
+  return `${formatCost(detail.cost_used_usd)} / ${formatCost(detail.cost_cap_usd)}`;
+}
+
+function PacePanel({ detail }: { detail: QuotaWindowDetail }) {
+  if (!detail.pace) return null;
+  const leftover = formatLeftoverLine(detail.pace);
+  return (
+    <div className="px-1 space-y-1">
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs tabular-nums text-muted-foreground">
+        {detail.pace.lookbacks.map((lookback) => (
+          <span key={lookback.id}>{formatLookbackLine(lookback)}</span>
+        ))}
+      </div>
+      <div className="flex items-center justify-between gap-2 text-xs">
+        <span className={paceToneClass(detail.pace.tone)}>
+          {paceToneLabel(detail.pace.tone)}
+        </span>
+        {leftover ? (
+          <span className="text-muted-foreground">{leftover}</span>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -177,6 +211,8 @@ export default async function QuotaPage() {
                       }
                     />
 
+                    <PacePanel detail={detail} />
+
                     {/* Inferred cap row */}
                     {caps.get(detail.id) && (
                       <div className="px-1 text-xs">
@@ -214,10 +250,20 @@ export default async function QuotaPage() {
                         </span>
                       </span>
                       <span>
-                        {detail.window_type === "rolling_hours" &&
+                        {detail.next_reset_at ? (
+                          <>
+                            Reset{" "}
+                            <span className="font-medium text-foreground">
+                              {formatResetLabel(detail.next_reset_at)}
+                            </span>
+                            {detail.ms_until_reset != null ? (
+                              <> · {formatTimeRemaining(detail.ms_until_reset)}</>
+                            ) : null}
+                          </>
+                        ) : detail.window_type === "rolling_hours" &&
                         detail.ms_until_reset != null ? (
                           <>
-                            Resets in up to{" "}
+                            Resets in{" "}
                             <span className="font-medium text-foreground">
                               {formatTimeRemaining(detail.ms_until_reset)}
                             </span>
@@ -258,7 +304,11 @@ export default async function QuotaPage() {
                     <span className="tabular-nums font-medium" title={formatTokensExact(w.tokens_in_window)}>
                       {formatTokens(w.tokens_in_window)}
                     </span>
-                    {w.fillPct != null && w.fillPct > 0 && w.tokens_in_window > 0 ? (
+                    {dollarCapLabel(w) ? (
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        · {dollarCapLabel(w)}
+                      </span>
+                    ) : w.fillPct != null && w.fillPct > 0 && w.tokens_in_window > 0 ? (
                       <span
                         className="ml-2 text-xs text-muted-foreground"
                         title={`Estimated cap (live): ${formatTokensExact(Math.round(w.tokens_in_window / w.fillPct))}`}
