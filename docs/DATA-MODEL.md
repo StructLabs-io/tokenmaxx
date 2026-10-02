@@ -100,7 +100,8 @@ Key columns:
 | `session_id` | ID of the AI session this event came from |
 | `input_tokens` | Input tokens used |
 | `output_tokens` | Output tokens generated |
-| `cache_creation_tokens` | Cache write tokens (Anthropic) |
+| `cache_creation_tokens` | Total cache write tokens (Anthropic, all durations) |
+| `cache_creation_1h_tokens` | 1-hour subset of cache writes; defaults to 0, between 0 and total cache writes |
 | `cache_read_tokens` | Cache read tokens (Anthropic) |
 | `cost_usd` | Computed cost in USD at time of capture |
 | `token_share_pct` | This model's % share of the session's total tokens |
@@ -123,7 +124,7 @@ Key columns: `percent_used`, `percent_remaining`, `observed_at`, `observation_me
 ---
 
 ### `pricing_snapshots`
-Per-model token prices, delta-tracked. A new row appears when a price changes. Historic cost calculations use the snapshot active at the time of the event.
+Per-model token prices, delta-tracked. A new row appears when a price changes. Historic cost calculations use the snapshot active at the time of the event. For Claude, `cache_write_per_m_usd` is the 5-minute rate (1.25× input); the 1-hour subset is priced separately at 2× input by `fn_compute_event_cost`. Locked costs are preserved; unlocked events reprice when next written.
 
 ---
 

@@ -15,6 +15,8 @@
 
 How your AI usage data gets from your machine into TokenMaxx.
 
+Claude and Codex token counts both come from the pinned ccusage (20.0.26); TokenMaxx adds only the Claude 1-hour cache-write split from transcripts. Across 145 Mac Codex sessions, final cumulative totals, summed last-usage events, and usage records measured 0.649×, 1.059×, and 0.996× ccusage respectively because of compaction resets, replayed fork history, and format changes, so Codex accounting is delegated to ccusage upstream.
+
 ---
 
 ## Overview

@@ -33,6 +33,12 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { runCcusageCodexSessions, codexRecordsFromCcusage, codexSessionsDirs } = require('./lib/codex-ccusage.cjs');
+const { parseVersion, compareVersions, checkVersion, childEnvironment } = require('./lib/ccusage-version.cjs');
+const { collectClaudeCacheSplit, cacheCreation1hForRow } = require('./lib/claude-cache-split.cjs');
+const { filterMinDate, guardUpsertRows } = require('./lib/upsert-guard.cjs');
+// Explicit CLI timezone prevents ccusage config files from changing daily grouping.
+const CCUSAGE_TIMEZONE = childEnvironment().TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
 const HOME = process.env.HOME || require('os').homedir();
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -127,10 +133,14 @@ async function batchInsertEvents(rows, dryRun) {
 
   // Dedup before any batch split — prevents the Postgres "cannot affect row
   // a second time" error when the same session appears in multiple scan passes.
-  const deduped = deduplicateRows(rows);
+  let deduped = deduplicateRows(rows);
   if (deduped.length < rows.length) {
     console.log(`    Deduped ${rows.length - deduped.length} duplicate rows before upsert`);
   }
+
+  const filtered = filterMinDate(deduped, process.env.TOKENMAXX_MIN_DATE);
+  if (filtered.length < deduped.length) console.log(`    Minimum date dropped ${deduped.length - filtered.length} rows`);
+  deduped = filtered;
 
   if (dryRun) {
     for (const row of deduped) {
@@ -138,6 +148,10 @@ async function batchInsertEvents(rows, dryRun) {
     }
     return { inserted: deduped.length, failed: 0 };
   }
+  deduped = await guardUpsertRows(deduped, supabaseRequest, {
+    allowShrink: process.env.TOKENMAXX_ALLOW_SHRINK === '1',
+    verbose: process.argv.includes('--verbose'),
+  });
   const BATCH = parseInt(process.env.TOKENMAXX_UPSERT_BATCH_SIZE || '25', 10);
   let inserted = 0, failed = 0;
   // Important: do not send project_id/project_hint when we have no label.
@@ -146,8 +160,12 @@ async function batchInsertEvents(rows, dryRun) {
   const labelled = [];
   const unlabelled = [];
   for (const row of deduped) {
-    if (row.project_id || row.project_hint) labelled.push(row);
-    else {
+    if (row.project_id || row.project_hint) {
+      const copy = { ...row };
+      if (copy.project_id == null) delete copy.project_id;
+      if (copy.project_hint == null) delete copy.project_hint;
+      labelled.push(copy);
+    } else {
       const copy = { ...row };
       delete copy.project_id;
       delete copy.project_hint;
@@ -175,176 +193,6 @@ async function batchInsertEvents(rows, dryRun) {
     }
   }
   return { inserted, failed };
-}
-
-// --- Token extraction helpers ---
-
-function firstNumeric(...values) {
-  for (const v of values) { if (Number.isFinite(v)) return v; }
-  return 0;
-}
-
-function cacheReadTokens(usage) {
-  return firstNumeric(
-    usage.cache_read_input_tokens, usage.cache_read_tokens,
-    usage.prompt_cache_read_tokens, usage.cached_tokens, usage.cached_input_tokens,
-    usage.prompt_tokens_details && usage.prompt_tokens_details.cached_tokens,
-    usage.input_token_details && usage.input_token_details.cached_tokens,
-    usage.input_tokens_details && usage.input_tokens_details.cached_tokens
-  );
-}
-
-function uncachedInputTokens(usage) {
-  const input = usage.input_tokens || usage.prompt_tokens || 0;
-  return Math.max(0, input - cacheReadTokens(usage));
-}
-
-// --- Codex CLI sessions sweep ---
-
-function hasUsageTokens(usage) {
-  return Boolean(usage && typeof usage === 'object' && (
-    Number.isFinite(usage.input_tokens) || Number.isFinite(usage.output_tokens) ||
-    Number.isFinite(usage.total_tokens) || Number.isFinite(usage.prompt_tokens) ||
-    Number.isFinite(usage.completion_tokens)
-  ));
-}
-
-function collectUsageObjects(obj) {
-  const out = [];
-  const seen = new WeakSet();
-  const stack = [obj];
-
-  while (stack.length > 0) {
-    const current = stack.pop();
-    if (!current || typeof current !== 'object' || seen.has(current)) continue;
-    seen.add(current);
-
-    if (hasUsageTokens(current.usage)) out.push(current.usage);
-    if (current.info && typeof current.info === 'object' && hasUsageTokens(current.info.last_token_usage)) {
-      out.push(current.info.last_token_usage);
-    }
-
-    for (const value of Object.values(current)) {
-      if (value && typeof value === 'object' && value !== current.usage && value !== current.info) {
-        stack.push(value);
-      }
-    }
-  }
-
-  return out;
-}
-
-function listJsonlFiles(rootDir) {
-  const files = [];
-  if (!fs.existsSync(rootDir)) return files;
-
-  const stack = [rootDir];
-  while (stack.length > 0) {
-    const dir = stack.pop();
-    let entries;
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch (_) {
-      continue;
-    }
-
-    for (const entry of entries) {
-      const p = path.join(dir, entry.name);
-      if (entry.isDirectory()) stack.push(p);
-      else if (entry.isFile() && entry.name.startsWith('rollout-') && entry.name.endsWith('.jsonl')) {
-        files.push(p);
-      }
-    }
-  }
-
-  return files;
-}
-
-function parseCodexSession(fpath) {
-  const lines = fs.readFileSync(fpath, 'utf8').split('\n');
-  const meta = {};
-  const usageByModel = new Map();
-  let usageEvents = 0, lastTotalUsage = null;
-  let model = 'gpt-5.3-codex';
-  let firstUserPrompt = null;
-
-  function addUsage(modelName, usage) {
-    const key = modelName || model;
-    const current = usageByModel.get(key) || { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
-    current.inputTokens += uncachedInputTokens(usage);
-    current.outputTokens += usage.output_tokens || usage.completion_tokens || 0;
-    current.cachedTokens += cacheReadTokens(usage);
-    usageByModel.set(key, current);
-  }
-
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    try {
-      const event = JSON.parse(line);
-      if (event.type === 'session_meta' && event.payload) Object.assign(meta, event.payload);
-      // First user message text — used as session_title.
-      if (!firstUserPrompt && event.role === 'user' && typeof event.content === 'string') {
-        firstUserPrompt = event.content;
-      } else if (!firstUserPrompt && event.role === 'user' && Array.isArray(event.content)) {
-        for (const c of event.content) {
-          if (c && typeof c.text === 'string') { firstUserPrompt = c.text; break; }
-          else if (typeof c === 'string') { firstUserPrompt = c; break; }
-        }
-      } else if (!firstUserPrompt && event.payload && event.payload.role === 'user') {
-        const c = event.payload.content;
-        if (typeof c === 'string') firstUserPrompt = c;
-        else if (Array.isArray(c)) {
-          for (const item of c) {
-            if (item && typeof item.text === 'string') { firstUserPrompt = item.text; break; }
-          }
-        }
-      }
-      if (event.model) model = event.model;
-      if (event.payload && event.payload.model) model = event.payload.model;
-      const eventModel = event.model || (event.payload && event.payload.model) || model;
-      if (event.info && hasUsageTokens(event.info.total_token_usage)) {
-        lastTotalUsage = event.info.total_token_usage;
-      }
-      for (const usage of collectUsageObjects(event)) {
-        addUsage(eventModel, usage);
-        usageEvents++;
-      }
-    } catch (_) {}
-  }
-
-  if (lastTotalUsage) {
-    usageByModel.clear();
-    addUsage(model, lastTotalUsage);
-  }
-  const totals = [...usageByModel.values()];
-  if (usageEvents === 0 || totals.every((t) => (t.inputTokens + t.outputTokens) === 0)) return null;
-
-  const ts = meta.timestamp
-    ? new Date(meta.timestamp).toISOString()
-    : new Date(fs.statSync(fpath).mtimeMs).toISOString();
-
-  // Trim title to 200 chars, strip environment_context wrappers.
-  let title = null;
-  if (firstUserPrompt) {
-    title = firstUserPrompt
-      .replace(/<environment_context>[\s\S]*?<\/environment_context>/g, '')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 200);
-    if (!title) title = null;
-  }
-
-  return [...usageByModel.entries()].map(([modelName, usage]) => ({
-    ts,
-    model: modelName,
-    inputTokens: usage.inputTokens,
-    outputTokens: usage.outputTokens,
-    cachedTokens: usage.cachedTokens,
-    sessionId: meta.id || path.basename(fpath, '.jsonl'),
-    sourcePath: fpath,
-    cwd: meta.cwd || null,
-    title,
-  }));
 }
 
 const PROJECT_IDS = {
@@ -493,6 +341,30 @@ function saveState(state) {
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2) + '\n');
 }
 
+function collectCodexViaCcusage(cutoffMs) {
+  try {
+    const configuredHome = process.env.CODEX_HOME;
+    const explicitDir = process.env.CODEX_SESSIONS_DIR || process.argv.includes('--codex-sessions-dir');
+    const env = childEnvironment();
+    delete env.CODEX_HOME;
+    if (configuredHome || explicitDir) env.CODEX_HOME = explicitDir ? path.dirname(CODEX_SESSIONS_DIR) : configuredHome;
+    const sessionsDirs = explicitDir
+      ? [CODEX_SESSIONS_DIR, path.join(path.dirname(CODEX_SESSIONS_DIR), 'archived_sessions')]
+      : codexSessionsDirs(env);
+    const binary = resolveCcusageBin({ quiet: true });
+    const direct = binary.native || binary.bare;
+    const command = direct ? binary.file : (process.env.NODE_BIN || process.execPath);
+    const args = direct ? [] : [binary.file];
+    const json = runCcusageCodexSessions({ command, args, env });
+    const records = codexRecordsFromCcusage(json, { sessionsDirs, cutoffMs });
+    console.log(`  Codex sessions skipped for missing files: ${records.skippedMissingFiles}`);
+    return records;
+  } catch (err) {
+    console.error(`  Codex ccusage failed: ${String(err.message).replace(/\s+/g, ' ')}`);
+    return [];
+  }
+}
+
 // --- Main ---
 
 async function main() {
@@ -576,42 +448,30 @@ Environment:
   const lookbackMs = LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
   const cutoffMs = Date.now() - lookbackMs;
 
-  const allFiles = listJsonlFiles(CODEX_SESSIONS_DIR)
-    .map(fpath => ({ fpath, stat: fs.statSync(fpath) }))
-    .filter(({ stat }) => stat.mtimeMs >= cutoffMs)
-    .sort((a, b) => a.stat.mtimeMs - b.stat.mtimeMs);
-
-  console.log(`Scanning ${allFiles.length} session files modified in last ${LOOKBACK_DAYS} days`);
-
   const rows = [];
-  for (const { fpath } of allFiles) {
-    const sessions = parseCodexSession(fpath);
-    if (!sessions) continue;
-    for (const session of sessions) {
-      const attribution = attributionForSession(session, fpath);
-
-      rows.push({
-        workspace_id: workspaceId,
-        user_id: userId,
-        captured_at: session.ts,
-        date_utc: session.ts.slice(0, 10),
-        date_local: localDateInTz(session.ts, USER_TIMEZONE),
-        provider: 'openai-codex',
-        model: session.model,
-        capture_method: `openai-codex.ccusage.cli.${CAPTURE_CONTEXT}`,
-        aggregation_grain: 'session',
-        session_id: session.sessionId,
-        source_path: session.sourcePath,
-        session_title: session.title,
-        project_id: attribution?.id ?? null,
-        project_hint: attribution?.slug ?? null,
-        input_tokens: session.inputTokens,
-        output_tokens: session.outputTokens,
-        cache_creation_tokens: 0,
-        cache_read_tokens: session.cachedTokens,
-        token_share_pct: 100.0,
-      });
-    }
+  for (const session of collectCodexViaCcusage(cutoffMs)) {
+    const attribution = attributionForSession(session, session.sourcePath);
+    rows.push({
+      workspace_id: workspaceId,
+      user_id: userId,
+      captured_at: session.ts,
+      date_utc: session.ts.slice(0, 10),
+      date_local: localDateInTz(session.ts, USER_TIMEZONE),
+      provider: 'openai-codex',
+      model: session.model,
+      capture_method: `openai-codex.ccusage.cli.${CAPTURE_CONTEXT}`,
+      aggregation_grain: 'session',
+      session_id: session.sessionId,
+      source_path: session.sourcePath,
+      session_title: session.title,
+      project_id: attribution?.id ?? null,
+      project_hint: attribution?.slug ?? null,
+      input_tokens: session.inputTokens,
+      output_tokens: session.outputTokens,
+      cache_creation_tokens: session.cacheCreationTokens,
+      cache_read_tokens: session.cachedTokens,
+      token_share_pct: 100.0,
+    });
   }
 
   console.log(`  ${rows.length} sessions to upsert`);
@@ -634,28 +494,7 @@ Environment:
  * `daily-<date>-<model>` keeps the unique constraint happy and makes upserts
  * deterministic across runs.
  */
-/**
- * Minimum acceptable ccusage major version. ccusage < 20 does not deduplicate
- * streamed JSONL usage entries (the same assistant message is re-written to
- * the transcript on every stream update), which inflated daily token counts
- * by 2x-46x and produced five-figure fake daily costs. ccusage >= 20 dedupes
- * on (message.id, requestId). Never run an older build.
- */
-const CCUSAGE_MIN_MAJOR = 20;
-
-/**
- * Resolve a runnable, version-checked ccusage. Cron environments strip PATH,
- * so 'npx' and shell shims (nvm) are unavailable. We probe candidates:
- *   1. CCUSAGE_BIN env var (explicit override)
- *   2. Same directory as the node binary that launched this process (nvm)
- *   3. /opt/homebrew/bin/ccusage resolved to its real path (Homebrew install)
- *   4. Bare 'ccusage' from PATH
- * Each candidate may be a JS script (run via the current node binary) or a
- * native compiled binary (run directly). Every candidate is probed with
- * --version and rejected if it is older than CCUSAGE_MIN_MAJOR; among the
- * survivors the highest version wins. Returns { file, native, version } or
- * throws if no acceptable ccusage exists.
- */
+// Probe explicit override, Homebrew, then PATH; highest accepted version wins.
 function isNativeBinary(file) {
   try {
     const buf = Buffer.alloc(4);
@@ -676,31 +515,23 @@ function ccusageVersionOf(candidate) {
   const args = candidate.native || candidate.bare ? ['--version'] : [candidate.file, '--version'];
   try {
     const out = execFileSync(command, args, {
+      env: childEnvironment(),
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
       timeout: 30000,
     });
-    const m = out.match(/(\d+)\.(\d+)\.(\d+)/);
-    if (!m) return null;
-    return { major: Number(m[1]), minor: Number(m[2]), patch: Number(m[3]), text: m[0] };
+    return parseVersion(out);
   } catch (_) {
     return null;
   }
 }
 
-function resolveCcusageBin() {
+function resolveCcusageBin({ quiet = false } = {}) {
   const candidates = [];
 
   const envBin = process.env.CCUSAGE_BIN;
   if (envBin && fs.existsSync(envBin)) {
     candidates.push({ file: envBin, native: isNativeBinary(envBin), bare: false, source: 'CCUSAGE_BIN' });
-  }
-
-  const nodeLocalBin = path.join(path.dirname(process.execPath), 'ccusage');
-  if (fs.existsSync(nodeLocalBin)) {
-    let real = nodeLocalBin;
-    try { real = fs.realpathSync(nodeLocalBin); } catch (_) { /* keep symlink path */ }
-    candidates.push({ file: real, native: isNativeBinary(real), bare: false, source: 'node-local' });
   }
 
   const homebrewBin = '/opt/homebrew/bin/ccusage';
@@ -716,28 +547,17 @@ function resolveCcusageBin() {
   const rejected = [];
   for (const c of candidates) {
     const v = ccusageVersionOf(c);
-    if (!v) continue;
-    if (v.major < CCUSAGE_MIN_MAJOR) {
-      rejected.push(`${c.source} (${c.file}) v${v.text}`);
+    const gate = checkVersion(v);
+    if (!gate.accepted) {
+      rejected.push(`${c.source} (${c.file}): ${gate.reason}`);
       continue;
     }
-    if (!best || v.major > best.v.major ||
-        (v.major === best.v.major && v.minor > best.v.minor) ||
-        (v.major === best.v.major && v.minor === best.v.minor && v.patch > best.v.patch)) {
-      best = { ...c, v };
-    }
+    if (!best || compareVersions(v, best.v) > 0) best = { ...c, v };
   }
+  if (!quiet) for (const reason of rejected) console.error(`  ccusage candidate rejected: ${reason}`);
+  if (!best) throw new Error(`No accepted ccusage found. ${checkVersion(null).reason}. Install ccusage@20.0.26 or set CCUSAGE_BIN.`);
 
-  for (const r of rejected) {
-    console.error(`  ccusage candidate rejected (< v${CCUSAGE_MIN_MAJOR}, no stream dedupe): ${r}`);
-  }
-  if (!best) {
-    throw new Error(
-      `No ccusage >= v${CCUSAGE_MIN_MAJOR} found. Older builds double-count streamed ` +
-      `usage entries and must not be used. Install/update ccusage or set CCUSAGE_BIN.`
-    );
-  }
-  console.log(`  ccusage: ${best.file} v${best.v.text} (${best.source}${best.native ? ', native' : ''})`);
+  if (!quiet) console.log(`  ccusage: ${best.file} v${best.v.text} (${best.source}${best.native ? ', native' : ''})`);
   return { file: best.file, native: best.native, bare: best.bare };
 }
 
@@ -745,8 +565,12 @@ function runCcusageJson(ccusage, args) {
   const nodeBin = process.env.NODE_BIN || process.execPath;
   const direct = ccusage.native || ccusage.bare;
   const command = direct ? ccusage.file : nodeBin;
-  const commandArgs = direct ? args : [ccusage.file, ...args];
+  // --offline: price from ccusage's embedded table, never a live feed (Anthropic
+  // rows are repriced from pricing_snapshots by the database trigger anyway).
+  const reportArgs = [...args, '--offline', '--timezone', CCUSAGE_TIMEZONE];
+  const commandArgs = direct ? reportArgs : [ccusage.file, ...reportArgs];
   const raw = execFileSync(command, commandArgs, {
+    env: childEnvironment(),
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
     maxBuffer: 32 * 1024 * 1024,
@@ -879,7 +703,10 @@ function isClaudeModel(modelName) {
 function collectClaudeViaCcusage(workspaceId, userId, lookbackDays) {
   const since = new Date();
   since.setUTCDate(since.getUTCDate() - lookbackDays);
-  const sinceArg = since.toISOString().slice(0, 10).replace(/-/g, '');
+  const sinceDate = since.toISOString().slice(0, 10);
+  const sinceArg = sinceDate.replace(/-/g, '');
+  const cacheSplit = collectClaudeCacheSplit({ sinceMs: new Date(`${sinceDate}T00:00:00`).getTime(),
+    timeZone: CCUSAGE_TIMEZONE });
 
   const ccusageScript = resolveCcusageBin();
   const sessionAttribution = buildClaudeSessionAttribution(ccusageScript, sinceArg, lookbackDays);
@@ -924,6 +751,7 @@ function collectClaudeViaCcusage(workspaceId, userId, lookbackDays) {
         input_tokens: input,
         output_tokens: output,
         cache_creation_tokens: cacheCreate,
+        cache_creation_1h_tokens: cacheCreation1hForRow(cacheSplit, date, modelName, cacheCreate),
         cache_read_tokens: cacheRead,
         token_share_pct: 100.0,
         cost_usd: typeof m.cost === 'number' ? m.cost : null,

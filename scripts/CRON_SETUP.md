@@ -30,31 +30,31 @@ TOKENMAXX_USER_SLUG=ben-macbook          # or openclaw-server
 
 ## MacBook crontab
 
+Store capture secrets and settings in `~/.config/tokenmaxx/capture.env` and run
+`chmod 600 ~/.config/tokenmaxx/capture.env`. Include the required variables above
+and `CCUSAGE_BIN` if needed. Install `ccusage@20.0.26` (`npm install -g ccusage@20.0.26`);
+the default gate accepts >=20.0.26 and <20.1.0. Server npx also pins 20.0.26.
+
+Run `command -v node` and replace `/absolute/path/to/node` below with that result.
+Replace `/absolute/path/to/tokenmaxx` with the checkout. Keep each cron entry on one line.
 Add via `crontab -e`:
 
 ```cron
-# TokenMaxx — local capture (runs once daily at 23:45 local time)
-45 23 * * * cd /Users/benauknowra/Projects/public/tokenmaxx && \
-  SUPABASE_URL=<prod_url> \
-  SUPABASE_SERVICE_ROLE_KEY=<service_role_key> \
-  TOKENMAXX_WORKSPACE_ID=<workspace_uuid> \
-  TOKENMAXX_USER_SLUG=ben-macbook \
-  node scripts/local-capture.js >> /tmp/tokenmaxx-local-capture.log 2>&1
-
-# TokenMaxx — fx rate (runs at 23:50 daily)
-50 23 * * * cd /Users/benauknowra/Projects/public/tokenmaxx && \
-  SUPABASE_URL=<prod_url> \
-  SUPABASE_SERVICE_ROLE_KEY=<service_role_key> \
-  node scripts/fx-rate.js >> /tmp/tokenmaxx-fx-rate.log 2>&1
-
-# TokenMaxx — pricing pull (runs weekly on Sunday at 23:55)
-55 23 * * 0 cd /Users/benauknowra/Projects/public/tokenmaxx && \
-  SUPABASE_URL=<prod_url> \
-  SUPABASE_SERVICE_ROLE_KEY=<service_role_key> \
-  node scripts/pricing-pull.js >> /tmp/tokenmaxx-pricing-pull.log 2>&1
+45 23 * * * set -a; . ~/.config/tokenmaxx/capture.env; set +a; cd /absolute/path/to/tokenmaxx && /absolute/path/to/node scripts/local-capture.js >> /tmp/tokenmaxx-local-capture.log 2>&1
+50 23 * * * set -a; . ~/.config/tokenmaxx/capture.env; set +a; cd /absolute/path/to/tokenmaxx && /absolute/path/to/node scripts/fx-rate.js >> /tmp/tokenmaxx-fx-rate.log 2>&1
+55 23 * * 0 set -a; . ~/.config/tokenmaxx/capture.env; set +a; cd /absolute/path/to/tokenmaxx && /absolute/path/to/node scripts/pricing-pull.js >> /tmp/tokenmaxx-pricing-pull.log 2>&1
+15 9 * * * set -a; . ~/.config/tokenmaxx/capture.env; set +a; cd /absolute/path/to/tokenmaxx && /absolute/path/to/node scripts/capture-freshness.js --user-slug ben-macbook --max-age-hours 26 >> /tmp/tokenmaxx-freshness.log 2>&1
 ```
 
-Replace `<prod_url>`, `<service_role_key>`, `<workspace_uuid>` with values from `shared/.env`.
+Freshness exits 1 only for stale capture with newer activity, 0 for fresh/idle,
+and 2 on errors. A caller can forward its single output line to a notifier;
+repeat `--activity-dir` for custom transcript locations.
+Run `pricing-pull.js` in **one place only**: enable either the Mac or server entry.
+
+Capture supports `TOKENMAXX_MIN_DATE=YYYY-MM-DD` to exclude older rows.
+Stored token totals cannot shrink by more than 0.5% unless an operator sets
+`TOKENMAXX_ALLOW_SHRINK=1` for an approved history correction. Use `--verbose`
+for details of skipped rows.
 
 ## n9c server crontab
 

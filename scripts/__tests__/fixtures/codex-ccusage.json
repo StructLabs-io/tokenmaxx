@@ -1,0 +1,18 @@
+{
+  "sessions": [
+    { "sessionId": "2026/09/14/rollout-2026-09-14T11-11-40-00000000-0000-4000-8000-000000000001", "models": {
+      "fixture-model-a": { "inputTokens": 100, "outputTokens": 20, "cacheReadTokens": 80, "cacheCreationTokens": 10, "totalTokens": 210 },
+      "fixture-zero": { "inputTokens": 0, "outputTokens": 0, "cacheReadTokens": 0 }
+    } },
+    { "sessionId": "2026/09/14/rollout-2026-09-14T11-11-40-00000000-0000-4000-8000-000000000002", "models": {
+      "fixture-model-a": { "inputTokens": 30, "outputTokens": 10, "cacheReadTokens": 20 },
+      "fixture-model-b": { "inputTokens": 40, "outputTokens": 15, "cacheReadTokens": 25 }
+    } },
+    { "sessionId": "2026/09/14/rollout-2026-09-14T11-11-40-00000000-0000-4000-8000-000000000003", "models": {
+      "fixture-model-a": { "inputTokens": 1 }
+    } },
+    { "sessionId": "2026/09/14/rollout-2026-09-14T11-11-40-00000000-0000-4000-8000-000000000004", "models": {
+      "fixture-model-a": { "inputTokens": 1 }
+    } }
+  ]
+}

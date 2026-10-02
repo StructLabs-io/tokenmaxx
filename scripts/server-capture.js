@@ -37,6 +37,13 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { firstNumeric, cacheReadTokens } = require('./lib/codex-session.cjs');
+const { runCcusageCodexSessions, codexRecordsFromCcusage, codexSessionsDirs } = require('./lib/codex-ccusage.cjs');
+const { checkVersion, childEnvironment } = require('./lib/ccusage-version.cjs');
+const { collectClaudeCacheSplit, cacheCreation1hForRow } = require('./lib/claude-cache-split.cjs');
+const { filterMinDate, guardUpsertRows } = require('./lib/upsert-guard.cjs');
+// Explicit CLI timezone prevents ccusage config files from changing daily grouping.
+const CCUSAGE_TIMEZONE = childEnvironment().TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -104,10 +111,14 @@ async function getWorkspaceId(idOrSlug) {
 
 async function batchInsertEvents(rows, dryRun) {
   if (rows.length === 0) return { inserted: 0, failed: 0 };
-  const deduped = deduplicateRows(rows);
+  let deduped = deduplicateRows(rows);
   if (deduped.length < rows.length) {
     console.log(`    Deduped ${rows.length - deduped.length} duplicate rows before upsert`);
   }
+
+  const filtered = filterMinDate(deduped, process.env.TOKENMAXX_MIN_DATE);
+  if (filtered.length < deduped.length) console.log(`    Minimum date dropped ${deduped.length - filtered.length} rows`);
+  deduped = filtered;
 
   if (dryRun) {
     for (const row of deduped) {
@@ -115,6 +126,10 @@ async function batchInsertEvents(rows, dryRun) {
     }
     return { inserted: deduped.length, failed: 0 };
   }
+  deduped = await guardUpsertRows(deduped, supabaseRequest, {
+    allowShrink: process.env.TOKENMAXX_ALLOW_SHRINK === '1',
+    verbose: process.argv.includes('--verbose'),
+  });
   const BATCH = parseInt(process.env.TOKENMAXX_UPSERT_BATCH_SIZE || '25', 10);
   let inserted = 0, failed = 0;
   // Do not send null project_id/project_hint for rows we cannot label.
@@ -124,8 +139,12 @@ async function batchInsertEvents(rows, dryRun) {
   const labelled = [];
   const unlabelled = [];
   for (const row of deduped) {
-    if (row.project_id || row.project_hint) labelled.push(row);
-    else {
+    if (row.project_id || row.project_hint) {
+      const copy = { ...row };
+      if (copy.project_id == null) delete copy.project_id;
+      if (copy.project_hint == null) delete copy.project_hint;
+      labelled.push(copy);
+    } else {
       const copy = { ...row };
       delete copy.project_id;
       delete copy.project_hint;
@@ -172,11 +191,6 @@ function deduplicateRows(rows) {
 
 // --- Token extraction helpers ---
 
-function firstNumeric(...values) {
-  for (const v of values) { if (Number.isFinite(v)) return v; }
-  return 0;
-}
-
 function cacheCreationTokens(usage) {
   return firstNumeric(
     usage.cache_creation_input_tokens,
@@ -184,54 +198,6 @@ function cacheCreationTokens(usage) {
     usage.prompt_cache_creation_tokens,
     usage.input_token_details && usage.input_token_details.cache_creation_tokens
   );
-}
-
-function cacheReadTokens(usage) {
-  return firstNumeric(
-    usage.cache_read_input_tokens, usage.cache_read_tokens,
-    usage.prompt_cache_read_tokens, usage.cached_tokens, usage.cached_input_tokens,
-    usage.prompt_tokens_details && usage.prompt_tokens_details.cached_tokens,
-    usage.input_token_details && usage.input_token_details.cached_tokens,
-    usage.input_tokens_details && usage.input_tokens_details.cached_tokens
-  );
-}
-
-function uncachedInputTokens(usage) {
-  const input = usage.input_tokens || usage.prompt_tokens || 0;
-  return Math.max(0, input - cacheReadTokens(usage));
-}
-
-function hasUsageTokens(usage) {
-  return Boolean(usage && typeof usage === 'object' && (
-    Number.isFinite(usage.input_tokens) || Number.isFinite(usage.output_tokens) ||
-    Number.isFinite(usage.total_tokens) || Number.isFinite(usage.prompt_tokens) ||
-    Number.isFinite(usage.completion_tokens)
-  ));
-}
-
-function collectUsageObjects(obj) {
-  const out = [];
-  const seen = new WeakSet();
-  const stack = [obj];
-
-  while (stack.length > 0) {
-    const current = stack.pop();
-    if (!current || typeof current !== 'object' || seen.has(current)) continue;
-    seen.add(current);
-
-    if (hasUsageTokens(current.usage)) out.push(current.usage);
-    if (current.info && typeof current.info === 'object' && hasUsageTokens(current.info.last_token_usage)) {
-      out.push(current.info.last_token_usage);
-    }
-
-    for (const value of Object.values(current)) {
-      if (value && typeof value === 'object' && value !== current.usage && value !== current.info) {
-        stack.push(value);
-      }
-    }
-  }
-
-  return out;
 }
 
 // --- Cron JSONL reader (server-only) ---
@@ -303,118 +269,6 @@ function buildCronUsageRow(event, workspaceId, userId) {
 
 // --- Codex CLI session sweep ---
 
-function listJsonlFiles(rootDir) {
-  const files = [];
-  if (!fs.existsSync(rootDir)) return files;
-
-  const stack = [rootDir];
-  while (stack.length > 0) {
-    const dir = stack.pop();
-    let entries;
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch (_) {
-      continue;
-    }
-
-    for (const entry of entries) {
-      const p = path.join(dir, entry.name);
-      if (entry.isDirectory()) stack.push(p);
-      else if (entry.isFile() && entry.name.startsWith('rollout-') && entry.name.endsWith('.jsonl')) {
-        files.push(p);
-      }
-    }
-  }
-
-  return files;
-}
-
-function parseCodexSession(fpath) {
-  const lines = fs.readFileSync(fpath, 'utf8').split('\n');
-  const meta = {};
-  const usageByModel = new Map();
-  let usageEvents = 0, lastTotalUsage = null;
-  let model = 'gpt-5.3-codex';
-  let firstUserPrompt = null;
-
-  function addUsage(modelName, usage) {
-    const key = modelName || model;
-    const current = usageByModel.get(key) || { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
-    current.inputTokens += uncachedInputTokens(usage);
-    current.outputTokens += usage.output_tokens || usage.completion_tokens || 0;
-    current.cachedTokens += cacheReadTokens(usage);
-    usageByModel.set(key, current);
-  }
-
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    try {
-      const event = JSON.parse(line);
-      if (event.type === 'session_meta' && event.payload) Object.assign(meta, event.payload);
-      // First user message text -> session_title
-      if (!firstUserPrompt && event.role === 'user' && typeof event.content === 'string') {
-        firstUserPrompt = event.content;
-      } else if (!firstUserPrompt && event.role === 'user' && Array.isArray(event.content)) {
-        for (const c of event.content) {
-          if (c && typeof c.text === 'string') { firstUserPrompt = c.text; break; }
-          else if (typeof c === 'string') { firstUserPrompt = c; break; }
-        }
-      } else if (!firstUserPrompt && event.payload && event.payload.role === 'user') {
-        const c = event.payload.content;
-        if (typeof c === 'string') firstUserPrompt = c;
-        else if (Array.isArray(c)) {
-          for (const item of c) {
-            if (item && typeof item.text === 'string') { firstUserPrompt = item.text; break; }
-          }
-        }
-      }
-      if (event.model) model = event.model;
-      if (event.payload && event.payload.model) model = event.payload.model;
-      const eventModel = event.model || (event.payload && event.payload.model) || model;
-      if (event.info && hasUsageTokens(event.info.total_token_usage)) {
-        lastTotalUsage = event.info.total_token_usage;
-      }
-      for (const usage of collectUsageObjects(event)) {
-        addUsage(eventModel, usage);
-        usageEvents++;
-      }
-    } catch (_) {}
-  }
-
-  if (lastTotalUsage) {
-    usageByModel.clear();
-    addUsage(model, lastTotalUsage);
-  }
-  const totals = [...usageByModel.values()];
-  if (usageEvents === 0 || totals.every((t) => (t.inputTokens + t.outputTokens) === 0)) return null;
-
-  const ts = meta.timestamp
-    ? new Date(meta.timestamp).toISOString()
-    : new Date(fs.statSync(fpath).mtimeMs).toISOString();
-
-  let title = null;
-  if (firstUserPrompt) {
-    title = firstUserPrompt
-      .replace(/<environment_context>[\s\S]*?<\/environment_context>/g, '')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 200);
-    if (!title) title = null;
-  }
-
-  return [...usageByModel.entries()].map(([modelName, usage]) => ({
-    ts,
-    model: modelName,
-    inputTokens: usage.inputTokens,
-    outputTokens: usage.outputTokens,
-    cachedTokens: usage.cachedTokens,
-    sessionId: meta.id || path.basename(fpath, '.jsonl'),
-    sourcePath: fpath,
-    cwd: meta.cwd || null,
-    title,
-  }));
-}
-
 // cwd -> project_id map. Server paths (/home/openclaw/...) are first; Mac
 // paths kept here too so a future shared lib doesn't lose them.
 const PROJECT_BY_CWD_RULES = [
@@ -435,45 +289,61 @@ function projectIdForCwd(cwd) {
   return null;
 }
 
+function collectCodexViaCcusage(cutoffMs) {
+  try {
+    const configuredHome = process.env.TOKENMAXX_CODEX_HOME;
+    const explicitDir = process.env.CODEX_SESSIONS_DIR || process.argv.includes('--codex-sessions-dir');
+    const env = childEnvironment();
+    delete env.CODEX_HOME;
+    if (configuredHome || explicitDir) env.CODEX_HOME = explicitDir ? path.dirname(CODEX_SESSIONS_DIR) : configuredHome;
+    const sessionsDirs = explicitDir
+      ? [CODEX_SESSIONS_DIR, path.join(path.dirname(CODEX_SESSIONS_DIR), 'archived_sessions')]
+      : codexSessionsDirs(env);
+    const command = 'npx';
+    const args = ['--yes', `ccusage@${process.env.TOKENMAXX_CCUSAGE_VERSION || '20.0.26'}`];
+    const version = execFileSync(command, [...args, '--version'], {
+      env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 120000,
+    });
+    const gate = checkVersion(version);
+    if (!gate.accepted) throw new Error(`No accepted ccusage: ${gate.reason}`);
+    const json = runCcusageCodexSessions({ command, args, env });
+    const records = codexRecordsFromCcusage(json, { sessionsDirs, cutoffMs });
+    console.log(`  Codex sessions skipped for missing files: ${records.skippedMissingFiles}`);
+    return records;
+  } catch (err) {
+    console.error(`  Codex ccusage failed: ${String(err.message).replace(/\s+/g, ' ')}`);
+    return [];
+  }
+}
+
 // Rolling-window scan: re-process Codex sessions modified in the last
 // LOOKBACK_DAYS days. Supabase upsert dedupes via the unique constraint.
 // No state file — if a day failed to capture, the next run backfills.
 async function processCodexSessions(workspaceId, userId, dryRun) {
   const cutoffMs = Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
 
-  const allFiles = listJsonlFiles(CODEX_SESSIONS_DIR)
-    .map(fpath => ({ fpath, stat: fs.statSync(fpath) }))
-    .filter(({ stat }) => stat.mtimeMs >= cutoffMs)
-    .sort((a, b) => a.stat.mtimeMs - b.stat.mtimeMs);
-
-  console.log(`Scanning ${allFiles.length} Codex session files modified in last ${LOOKBACK_DAYS} days`);
-
   const rows = [];
-  for (const { fpath } of allFiles) {
-    const sessions = parseCodexSession(fpath);
-    if (!sessions) continue;
-    for (const session of sessions) {
-      rows.push({
-        workspace_id: workspaceId,
-        user_id: userId,
-        captured_at: session.ts,
-        date_utc: session.ts.slice(0, 10),
-        date_local: localDateInTz(session.ts, SERVER_TIMEZONE),
-        provider: 'openai-codex',
-        model: session.model,
-        capture_method: `openai-codex.ccusage.cli.${CAPTURE_CONTEXT}`,
-        aggregation_grain: 'session',
-        session_id: session.sessionId,
-        source_path: session.sourcePath,
-        session_title: session.title,
-        project_id: projectIdForCwd(session.cwd),
-        input_tokens: session.inputTokens,
-        output_tokens: session.outputTokens,
-        cache_creation_tokens: 0,
-        cache_read_tokens: session.cachedTokens,
-        token_share_pct: 100.0,
-      });
-    }
+  for (const session of collectCodexViaCcusage(cutoffMs)) {
+    rows.push({
+      workspace_id: workspaceId,
+      user_id: userId,
+      captured_at: session.ts,
+      date_utc: session.ts.slice(0, 10),
+      date_local: localDateInTz(session.ts, SERVER_TIMEZONE),
+      provider: 'openai-codex',
+      model: session.model,
+      capture_method: `openai-codex.ccusage.cli.${CAPTURE_CONTEXT}`,
+      aggregation_grain: 'session',
+      session_id: session.sessionId,
+      source_path: session.sourcePath,
+      session_title: session.title,
+      project_id: projectIdForCwd(session.cwd),
+      input_tokens: session.inputTokens,
+      output_tokens: session.outputTokens,
+      cache_creation_tokens: session.cacheCreationTokens,
+      cache_read_tokens: session.cachedTokens,
+      token_share_pct: 100.0,
+    });
   }
 
   return batchInsertEvents(rows, dryRun);
@@ -490,11 +360,24 @@ function isClaudeModel(modelName) {
 function collectClaudeViaCcusage(workspaceId, userId, lookbackDays) {
   const since = new Date();
   since.setUTCDate(since.getUTCDate() - lookbackDays);
-  const sinceArg = since.toISOString().slice(0, 10).replace(/-/g, '');
+  const sinceDate = since.toISOString().slice(0, 10);
+  const sinceArg = sinceDate.replace(/-/g, '');
+  const cacheSplit = collectClaudeCacheSplit({ sinceMs: new Date(`${sinceDate}T00:00:00`).getTime(),
+    timeZone: CCUSAGE_TIMEZONE });
 
+  const packageName = `ccusage@${process.env.TOKENMAXX_CCUSAGE_VERSION || '20.0.26'}`;
+  const version = execFileSync('npx', ['--yes', packageName, '--version'], {
+    env: childEnvironment(), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 120000,
+  });
+  const gate = checkVersion(version);
+  if (!gate.accepted) {
+    console.error(`  ccusage candidate rejected: ${gate.reason}`);
+    throw new Error(`No accepted ccusage: ${gate.reason}`);
+  }
   let raw;
   try {
-    raw = execFileSync('npx', ['ccusage@latest', 'daily', '--json', '--since', sinceArg], {
+    raw = execFileSync('npx', ['--yes', packageName, 'daily', '--json', '--offline', '--since', sinceArg, '--timezone', CCUSAGE_TIMEZONE], {
+      env: childEnvironment(),
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
       maxBuffer: 32 * 1024 * 1024,
@@ -541,6 +424,7 @@ function collectClaudeViaCcusage(workspaceId, userId, lookbackDays) {
         input_tokens: input,
         output_tokens: output,
         cache_creation_tokens: cacheCreate,
+        cache_creation_1h_tokens: cacheCreation1hForRow(cacheSplit, date, modelName, cacheCreate),
         cache_read_tokens: cacheRead,
         token_share_pct: 100.0,
         cost_usd: typeof m.cost === 'number' ? m.cost : null,
