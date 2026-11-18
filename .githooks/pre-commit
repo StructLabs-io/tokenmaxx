@@ -1,16 +1,14 @@
 #!/usr/bin/env bash
 # n9c-git-sync v1 — canonical pre-commit auto-sync.
-# Source of truth: n9c-repo/shared/config/git-hooks/pre-commit-sync
-# Installed fleet-wide by shared/scripts/install-git-sync-hooks.sh.
+# This file is copied into every repo that uses it, public ones included.
+# Keep internal paths, names and incident details out of it.
 #
 # Pulls the remote default branch before a commit made ON that branch, so
 # concurrent agent sessions don't race each other into push rejections.
 # Safe by construction:
 #   - fires only on the repo's default branch (feature/worktree branches skip)
 #   - fail-open on network problems (never blocks a commit because wifi died)
-#   - stash discipline per multi-session policy: tagged `stash push -u`,
-#     restore with `stash apply --index <sha>`, drop by sha — NEVER a bare
-#     `git stash pop` (the stash stack is shared across sessions/worktrees)
+#   - never stashes: fast-forward only, on the tree as it stands (see below)
 #   - no GNU `timeout` dependency (absent on stock macOS — the historical
 #     hooks silently no-oped because of this); perl alarm wrapper instead
 set -uo pipefail
@@ -42,46 +40,48 @@ REMOTE_HEAD="$(run_to 8 git ls-remote origin "refs/heads/$DEFAULT_BRANCH" | cut 
 # Local already contains the remote head (we're ahead) — nothing to sync.
 git merge-base --is-ancestor "$REMOTE_HEAD" "$LOCAL_HEAD" 2>/dev/null && exit 0
 
-echo "$PREFIX origin/$DEFAULT_BRANCH has new commits — syncing before commit..."
+# No stash, ever (2026-10-10). The stash stack is shared by every worktree and
+# session, and a path removed
+# from the index but kept on disk (`git rm --cached`) is stashed twice, as
+# tracked AND untracked: `stash apply` then restores the whole tree and still
+# exits 1 ("already exists, no checkout"), so the hook aborted the commit and
+# stranded entries on the shared stack.
+# Only a fast-forward is attempted, on the tree as it stands: git refuses it
+# whole, touching nothing, when it would overwrite any staged, unstaged or
+# untracked change. Diverged or refused: skip, say so in one line, commit.
+# After a pull, git always rejects this commit ("cannot lock ref 'HEAD': is at
+# X but expected Y": it read HEAD before the hook ran), so stop it ourselves
+# with a plain instruction. The staged set is untouched; re-running commits.
+SKIPPED="$PREFIX origin/$DEFAULT_BRANCH has new commits; no fast-forward (diverged or local changes in the way) — pre-sync skipped. Before pushing: git pull --no-rebase origin $DEFAULT_BRANCH (never rebase, never stash)."
 
-STASH_TAG="n9c-sync-$$-$(date +%s)"
-git stash push -u -m "$STASH_TAG" -q 2>/dev/null || true
-STASH_SHA="$(git stash list --format='%H %gs' 2>/dev/null | awk -v t="$STASH_TAG" 'index($0,t){print $1; exit}')"
-
-drop_our_stash() {
-  [[ -z "$STASH_SHA" ]] && return 0
-  local ref
-  ref="$(git stash list --format='%gd %H' 2>/dev/null | awk -v s="$STASH_SHA" '$2==s{print $1; exit}')"
-  [[ -n "$ref" ]] && git stash drop -q "$ref" 2>/dev/null || true
-}
-
-restore_stash() {
-  [[ -z "$STASH_SHA" ]] && return 0
-  if git stash apply --index -q "$STASH_SHA" 2>/dev/null; then
-    drop_our_stash
-    echo "$PREFIX Restored changes (index intact)."
-    return 0
+# Never pull on a temporary index (2026-11-19). A commit that names its paths
+# (`--only`, a pathspec, `-a`) runs on one: GIT_INDEX_FILE is then not the real
+# `index`. A pull there updates the temporary index, HEAD and the files, and
+# leaves the real index at the old HEAD, so every pulled file shows as a staged
+# deletion plus an untracked copy, and the next plain commit deletes it from
+# the branch.
+# So: fetch only (touches no index and no file). If a fast-forward would go
+# through, stop the commit and ask for the pull first. If git would refuse it
+# anyway (diverged, or an incoming file is changed or untracked here), skip.
+if [[ -n "${GIT_INDEX_FILE:-}" && "$(basename "$GIT_INDEX_FILE")" != "index" ]]; then
+  if run_to 30 git fetch -q origin "$DEFAULT_BRANCH" \
+     && git merge-base --is-ancestor "$LOCAL_HEAD" FETCH_HEAD 2>/dev/null; then
+    INCOMING="$(git diff --name-only "$LOCAL_HEAD" FETCH_HEAD 2>/dev/null | sort)"
+    LOCAL_DIRT="$( { git diff --name-only HEAD 2>/dev/null; git diff --cached --name-only HEAD 2>/dev/null; git ls-files -o --exclude-standard 2>/dev/null; } | sort -u)"
+    OVERLAP="$(comm -12 <(printf '%s\n' "$INCOMING") <(printf '%s\n' "$LOCAL_DIRT") | grep -v '^$' || true)"
+    if [[ -z "$OVERLAP" ]]; then
+      echo "$PREFIX origin/$DEFAULT_BRANCH has new commits. This commit names its paths, so the hook did not pull (a pull here would leave the index stale). Run: git pull --ff-only origin $DEFAULT_BRANCH   then run the commit again."
+      exit 1
+    fi
   fi
-  if git stash apply -q "$STASH_SHA" 2>/dev/null; then
-    drop_our_stash
-    echo "$PREFIX Restored changes, but the staged set may have shifted."
-    echo "$PREFIX Re-stage (git add) and run the commit again."
-    return 1
-  fi
-  echo "$PREFIX ERROR: could not restore your stashed work automatically."
-  echo "$PREFIX It is SAFE in stash sha $STASH_SHA (tag: $STASH_TAG)."
-  echo "$PREFIX Recover: git stash apply --index $STASH_SHA   then drop that entry."
-  return 1
-}
-
-if run_to 30 git pull --ff-only origin "$DEFAULT_BRANCH" -q; then
-  echo "$PREFIX Pulled (fast-forward)."
-elif run_to 60 git pull --rebase origin "$DEFAULT_BRANCH" -q; then
-  echo "$PREFIX Pulled (rebase)."
-else
-  git rebase --abort 2>/dev/null || true
-  echo "$PREFIX WARN: pull failed (network or divergence) — committing on local state."
+  echo "$SKIPPED"
+  exit 0
 fi
 
-restore_stash || exit 1
+if run_to 30 git pull --ff-only -q origin "$DEFAULT_BRANCH"; then
+  echo "$PREFIX origin/$DEFAULT_BRANCH had new commits — pulled (fast-forward). Staged changes kept; run the commit again."
+  exit 1
+else
+  echo "$SKIPPED"
+fi
 exit 0
