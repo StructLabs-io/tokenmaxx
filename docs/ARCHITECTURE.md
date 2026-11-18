@@ -65,7 +65,7 @@ RLS (Row Level Security) is enabled on all workspace-scoped tables. Your data is
 
 ### 3. Cloudflare Workers (your dashboard)
 
-A Next.js 15 app deployed to Cloudflare Workers via `@opennextjs/cloudflare`. Connects directly to your Supabase project via the anon key + user JWT. Auth is handled by Supabase Auth with server-side session management.
+A Next.js 16 app deployed to Cloudflare Workers via `@opennextjs/cloudflare`. Connects directly to your Supabase project via the anon key + user JWT. Auth is handled by Supabase Auth with server-side session management.
 
 Current pages:
 - `/` — daily overview: tokens, cost, top projects

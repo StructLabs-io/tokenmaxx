@@ -13,6 +13,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Quota pacing runway on the dashboard MiniWindow and `/quota`: 1D/7D/30D (or 1h/5h) burn vs vendor reset, with warning / critical / super-critical when the pool empties before reset
 - Normalized reset clocks on the quota read path (`resets_at`, Codex `rate_limit.*.reset_at`, Cursor `nextResetAt` / `billingCycleEnd`) so weekly and 5-hour windows use a real countdown instead of window length
 
+### Changed
+
+- Next.js 15 → 16 (Next.js 15 is out of support, and the Cloudflare build refuses unsupported versions). `@opennextjs/cloudflare` and `wrangler` moved up with it; `wrangler` now needs Node 22 or newer
+- `middleware.ts` keeps its name: the Cloudflare build does not accept the Node-runtime `proxy.ts` that Next.js 16 suggests
+
+### Removed
+
+- `npm run lint`: `next lint` no longer exists in Next.js 16, and the repo never had an ESLint config for it to use
+
 ---
 
 ## [1.0.0] — 2026-05-30

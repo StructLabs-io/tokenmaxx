@@ -83,7 +83,7 @@ Telegram
 ## Stack
 
 - **Database + auth + background jobs:** Supabase (Postgres, Edge Functions, pg_cron, Realtime)
-- **Frontend:** Next.js 15 + shadcn/ui, deployed to Cloudflare Pages
+- **Frontend:** Next.js 16 + shadcn/ui, deployed to Cloudflare Pages
 - **Capture scripts:** Node.js, run via cron on your machine and any servers
 - **Time tracking integration:** Toggl API (optional, for project attribution)
 
