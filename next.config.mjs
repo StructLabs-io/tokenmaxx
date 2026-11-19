@@ -19,8 +19,26 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, "package.json"), "utf-8"));
 
+/**
+ * Baseline security headers, sent on every response.
+ * No Content-Security-Policy yet: it needs a nonce-based policy tested
+ * against the charts and theme scripts before it can be switched on.
+ */
+const securityHeaders = [
+  { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+];
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Do not advertise the framework in an X-Powered-By header.
+  poweredByHeader: false,
+  async headers() {
+    return [{ source: "/:path*", headers: securityHeaders }];
+  },
   // Version + build identity surfaced at build time. CI sets
   // TOKENMAXX_BUILD_NUMBER and NEXT_PUBLIC_GIT_SHA; locally they fall
   // back to 'dev' so `npm run dev` doesn't need any setup.
