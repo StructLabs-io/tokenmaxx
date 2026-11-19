@@ -11,6 +11,7 @@
 
 import { NextRequest } from "next/server";
 import { getSupabaseServerClient, isServiceRoleConfigured } from "@/lib/supabase/client";
+import { isDemoMode } from "@/lib/data";
 import { requireAllowedUser } from "@/lib/auth-guard";
 import type { DailyTotal, UsageEventRow } from "@/lib/supabase/types";
 
@@ -42,6 +43,17 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Demo mode never uses the service-role client.
+  if (isDemoMode()) {
+    const { id: demoSlug } = await params;
+    const { demoProjectDetail } = await import("@/demo/demo-mode-flag");
+    const detail = demoProjectDetail(demoSlug);
+    if (!detail.project) {
+      return Response.json({ error: "Project not found" }, { status: 404 });
+    }
+    return Response.json(detail, { headers: { "Cache-Control": "no-store" } });
+  }
+
   if (!isServiceRoleConfigured()) {
     return Response.json({ error: "Supabase not configured" }, { status: 503 });
   }

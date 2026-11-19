@@ -12,6 +12,7 @@
 
 import { NextRequest } from "next/server";
 import { getSupabaseServerClient, isServiceRoleConfigured } from "@/lib/supabase/client";
+import { isDemoMode } from "@/lib/data";
 import { requireAllowedUser } from "@/lib/auth-guard";
 import type { ProjectTotals, CreateProjectInput } from "@/lib/supabase/types";
 
@@ -19,6 +20,12 @@ const DEFAULT_DAYS = 30;
 const MAX_DAYS = 365;
 
 export async function GET(req: NextRequest) {
+  // Demo mode never uses the service-role client.
+  if (isDemoMode()) {
+    const { demoProjectsForSelect } = await import("@/demo/demo-mode-flag");
+    return Response.json(demoProjectsForSelect(), { headers: { "Cache-Control": "no-store" } });
+  }
+
   if (!isServiceRoleConfigured()) {
     return Response.json({ error: "Supabase not configured" }, { status: 503 });
   }

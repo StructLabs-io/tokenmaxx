@@ -8,8 +8,21 @@
  */
 
 import { getSupabaseServerClient, isServiceRoleConfigured } from "@/lib/supabase/client";
+import { isDemoMode } from "@/lib/data";
 
 export async function GET() {
+  // Demo mode never uses the service-role client.
+  if (isDemoMode()) {
+    const { demoFilterOptions, demoUsersSummary } = await import("@/demo/demo-mode-flag");
+    const users = demoUsersSummary().users.map((u) => ({
+      id: u.id,
+      display_name: u.display_name,
+      account_type: u.account_type,
+      slug: u.slug,
+    }));
+    return Response.json({ users, models: demoFilterOptions().models }, { headers: { "Cache-Control": "no-store" } });
+  }
+
   if (!isServiceRoleConfigured()) {
     return Response.json({ error: "Supabase not configured" }, { status: 503 });
   }

@@ -8,6 +8,7 @@
  */
 
 import { getSupabaseServerClient, isServiceRoleConfigured } from "@/lib/supabase/client";
+import { isDemoMode } from "@/lib/data";
 import type { ProviderBreakdown, WrapProject, MonthlyTotal, WrapStats } from "@/lib/supabase/types";
 
 export type { ProviderBreakdown, WrapProject, MonthlyTotal, WrapStats };
@@ -18,6 +19,12 @@ const CUTOFF = `${YEAR}-01-01`;
 const MONTH_LABELS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
 export async function GET() {
+  // Demo mode never uses the service-role client.
+  if (isDemoMode()) {
+    const { demoWrapStats } = await import("@/demo/demo-mode-flag");
+    return Response.json(demoWrapStats(), { headers: { "Cache-Control": "no-store" } });
+  }
+
   if (!isServiceRoleConfigured()) {
     return Response.json({ error: "Supabase not configured" }, { status: 503 });
   }

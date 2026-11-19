@@ -11,6 +11,7 @@
 
 import { NextRequest } from "next/server";
 import { getSupabaseServerClient, isServiceRoleConfigured } from "@/lib/supabase/client";
+import { isDemoMode } from "@/lib/data";
 import { requireAllowedUser } from "@/lib/auth-guard";
 import type { UnattributedGroup } from "@/lib/supabase/types";
 
@@ -19,6 +20,12 @@ export type { UnattributedGroup };
 // ---- GET ---------------------------------------------------------------
 
 export async function GET() {
+  // Demo mode never uses the service-role client.
+  if (isDemoMode()) {
+    const { demoUnattributedGroups } = await import("@/demo/demo-mode-flag");
+    return Response.json(demoUnattributedGroups(), { headers: { "Cache-Control": "no-store" } });
+  }
+
   if (!isServiceRoleConfigured()) {
     return Response.json({ error: "Supabase not configured" }, { status: 503 });
   }

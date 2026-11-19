@@ -78,10 +78,24 @@ export function isSupabaseConfigured(): boolean {
 }
 
 /**
+ * True on the demo deployment, which serves fictional seed data to
+ * signed-out visitors.
+ */
+export function isDemoDeployment(): boolean {
+  return process.env.NEXT_PUBLIC_TOKENMAXX_DEMO === "1";
+}
+
+/**
  * Returns true when the service role key is real (not placeholder).
  * Use this to guard server-side Supabase calls in Route Handlers.
+ *
+ * Always false in demo mode: demo mode never uses the service-role client,
+ * even if a service role key is present in the environment.
+ * getSupabaseServerClient() relies on this check and throws, so no route or
+ * page can build one by forgetting its own demo check.
  */
 export function isServiceRoleConfigured(): boolean {
+  if (isDemoDeployment()) return false;
   return (
     env.NEXT_PUBLIC_SUPABASE_URL !== "https://placeholder.supabase.co" &&
     env.SUPABASE_SERVICE_ROLE_KEY !== "placeholder-service-role-key"
